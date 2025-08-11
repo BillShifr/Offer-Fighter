@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import cors from "cors";
 import axios from "axios";
 import { v4 as uuidv4 } from 'uuid';
-import { PaymentsApi, Configuration } from 'yookassa-sdk';
+// import { PaymentsApi, Configuration } from 'yookassa-sdk';
 
 dotenv.config();
 
@@ -12,11 +12,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const config = new Configuration({
-    shopId: process.env.YOOKASSA_SHOP_ID,
-    secretKey: process.env.YOOKASSA_SECRET_KEY,
-});
-const paymentsClient = new PaymentsApi(config);
+// const config = new Configuration({
+//     shopId: process.env.YOOKASSA_SHOP_ID,
+//     secretKey: process.env.YOOKASSA_SECRET_KEY,
+// });
+// const paymentsClient = new PaymentsApi(config);
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log("MongoDB connected"))
@@ -153,60 +153,60 @@ app.get("/user/:telegramId/subscription", async (req, res) => {
 // --- Создать платеж (пример для ЮKassa или Stripe) ---
 // инициализация клиента ЮKass
 
-app.post('/payment/create', async (req, res) => {
-    const { telegramId, amount } = req.body;
-    if (!telegramId || !amount) return res.status(400).json({ error: 'telegramId и amount обязательны' });
-
-    try {
-        const idempotenceKey = uuidv4(); // уникальный ключ для идемпотентности
-
-        const payment = await paymentsClient.createPayment({
-            amount: {
-                value: amount.toFixed(2),
-                currency: 'RUB',
-            },
-            confirmation: {
-                type: 'redirect',
-                return_url: `${process.env.BACKEND_URL}/payment/confirm?telegramId=${telegramId}`,
-            },
-            description: `Оплата подписки бота для telegramId: ${telegramId}`,
-        }, idempotenceKey);
-
-        // Сохрани в базе, если нужно, payment.id и статус
-
-        res.json({ paymentUrl: payment.confirmation.confirmation_url });
-    } catch (error) {
-        console.error('Ошибка создания платежа:', error);
-        res.status(500).json({ error: 'Ошибка создания платежа' });
-    }
-});
-
-
-// --- Вебхук для оплаты (ЮKassa или Stripe) ---÷
-app.post('/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-    try {
-        const event = JSON.parse(req.body.toString());
-
-        // Пример проверки события оплаты
-        if (event.event === 'payment.succeeded') {
-            const paymentId = event.object.id;
-            const telegramIdFromDesc = event.object.description.match(/telegramId: (\d+)/)[1];
-
-            // Обновляем пользователя в базе — подписка активна
-            await User.findOneAndUpdate(
-                { telegramId: telegramIdFromDesc },
-                { subscribed: true }
-            );
-
-            console.log(`Оплата прошла успешно для telegramId=${telegramIdFromDesc}, paymentId=${paymentId}`);
-        }
-
-        res.status(200).send('OK');
-    } catch (e) {
-        console.error('Ошибка вебхука ЮKassa:', e);
-        res.status(400).send('Error');
-    }
-});
+// app.post('/payment/create', async (req, res) => {
+//     const { telegramId, amount } = req.body;
+//     if (!telegramId || !amount) return res.status(400).json({ error: 'telegramId и amount обязательны' });
+//
+//     try {
+//         const idempotenceKey = uuidv4(); // уникальный ключ для идемпотентности
+//
+//         const payment = await paymentsClient.createPayment({
+//             amount: {
+//                 value: amount.toFixed(2),
+//                 currency: 'RUB',
+//             },
+//             confirmation: {
+//                 type: 'redirect',
+//                 return_url: `${process.env.BACKEND_URL}/payment/confirm?telegramId=${telegramId}`,
+//             },
+//             description: `Оплата подписки бота для telegramId: ${telegramId}`,
+//         }, idempotenceKey);
+//
+//         // Сохрани в базе, если нужно, payment.id и статус
+//
+//         res.json({ paymentUrl: payment.confirmation.confirmation_url });
+//     } catch (error) {
+//         console.error('Ошибка создания платежа:', error);
+//         res.status(500).json({ error: 'Ошибка создания платежа' });
+//     }
+// });
+//
+//
+// // --- Вебхук для оплаты (ЮKassa или Stripe) ---÷
+// app.post('/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+//     try {
+//         const event = JSON.parse(req.body.toString());
+//
+//         // Пример проверки события оплаты
+//         if (event.event === 'payment.succeeded') {
+//             const paymentId = event.object.id;
+//             const telegramIdFromDesc = event.object.description.match(/telegramId: (\d+)/)[1];
+//
+//             // Обновляем пользователя в базе — подписка активна
+//             await User.findOneAndUpdate(
+//                 { telegramId: telegramIdFromDesc },
+//                 { subscribed: true }
+//             );
+//
+//             console.log(`Оплата прошла успешно для telegramId=${telegramIdFromDesc}, paymentId=${paymentId}`);
+//         }
+//
+//         res.status(200).send('OK');
+//     } catch (e) {
+//         console.error('Ошибка вебхука ЮKassa:', e);
+//         res.status(400).send('Error');
+//     }
+// });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
