@@ -180,12 +180,17 @@ bot.use(stage.middleware());
 
 // Команда /start — приветствие и кнопка авторизации
 bot.start(async (ctx) => {
-    const telegramId = ctx.from.id;
-    const authUrl = `${process.env.BACKEND_URL}/auth/hh?telegramId=${telegramId}`;
+    const firstName = ctx.from.first_name || "друг";
+    const authUrl = `${process.env.BACKEND_URL}/auth/hh?telegramId=${ctx.from.id}`;
 
-    await ctx.reply(
-        `Привет, ${ctx.from.first_name}!\nДля начала работы авторизуйся на hh.ru:`,
-        Markup.inlineKeyboard([Markup.button.url("Авторизоваться на hh.ru", authUrl)])
+    await ctx.replyWithMarkdownV2(
+        `👋 *Привет, ${firstName}!*\n\n` +
+        `Добро пожаловать в наш бот по поиску работы на hh\\.ru\\.\n` +
+        `Для начала работы, пожалуйста, авторизуйся на hh\\.ru, чтобы мы могли подобрать для тебя лучшие вакансии\\.`,
+        Markup.inlineKeyboard([
+            Markup.button.url("🚀 Авторизоваться на hh.ru", authUrl),
+            Markup.button.callback("ℹ️ Помощь", "help")
+        ])
     );
 });
 
