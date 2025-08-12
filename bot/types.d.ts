@@ -1,9 +1,6 @@
-import { Scenes } from "telegraf";
+import { Scenes, Markup } from "telegraf";
 
-/**
- * Расширяем WizardSessionData под наши нужды
- */
-export interface JobSearchSession extends Scenes.WizardSessionData {
+export interface JobSearchSession {
     selectedResumeId?: string;
     region?: string;
     workSchedule?: string;
@@ -13,10 +10,9 @@ export interface JobSearchSession extends Scenes.WizardSessionData {
     coverLetter?: string;
 }
 
-/**
- * Кастомный контекст, который знает о нашей сессии
- */
-export interface JobSearchContext extends Scenes.WizardContext<JobSearchSession> {}
+export interface JobSearchContext extends Scenes.WizardContext {
+    session: JobSearchSession;
+}
 
 export interface Vacancy {
     id: string;
@@ -38,5 +34,10 @@ export interface Vacancy {
     published_at?: string;
     alternate_url?: string;
     url?: string;
-    // Другие поля по необходимости
+}
+
+export interface HHRegion {
+    id: string;
+    name: string;
+    areas?: HHRegion[];
 }
