@@ -39,5 +39,25 @@ export interface Vacancy {
 export interface HHRegion {
     id: string;
     name: string;
+    parent_id?: string | null;
     areas?: HHRegion[];
+}
+
+export interface HHSchedule {
+    id: string;
+    name: string;
+}
+
+export interface HHEmployment {
+    id: string;
+    name: string;
+}
+
+export interface HHProfessionalArea {
+    id: string;
+    name: string;
+    categories?: {
+        id: string;
+        name: string;
+    }[];
 }

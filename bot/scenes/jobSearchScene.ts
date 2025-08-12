@@ -1,9 +1,9 @@
 import {Markup, Scenes} from "telegraf";
 import axios from "axios";
-import {JobSearchContext, Vacancy, HHRegion, JobSearchSession} from "../types";
-import { buildKeyboardButtons, hasCallbackData, getHHRegions } from "../utils/keyboardUtils";
-import { formatSalary } from "../utils/salaryUtils";
-import { getUserResumes, searchVacancies } from "../utils/apiUtils";
+import {HHRegion, JobSearchContext, JobSearchSession} from "../types";
+import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils";
+import {formatSalary} from "../utils/salaryUtils";
+import {getUserResumes, searchVacancies} from "../utils/apiUtils";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     "job-search-wizard",
@@ -78,14 +78,35 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         try {
             const regions = await getHHRegions();
-            const region = regions.find((r: any) => String(r.id) === regionId);
 
-            if (region && region.areas && region.areas.length) {
+            // Функция для поиска региона в дереве
+            const findRegion = (items: HHRegion[], id: string): HHRegion | null => {
+                for (const item of items) {
+                    if (String(item.id) === id) return item;
+                    if (item.areas) {
+                        const found = findRegion(item.areas, id);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+
+            const region = findRegion(regions as any, regionId);
+
+            if (!region) {
+                await ctx.reply("Регион не найден. Пожалуйста, попробуйте снова.");
+                return ctx.wizard.selectStep(2);
+            }
+
+            if (region.areas && region.areas.length > 0) {
                 const keyboard = buildKeyboardButtons(
-                    region.areas,
+                    region.areas.map(a => ({
+                        id: a.id,
+                        name: a.name
+                    })),
                     "select_subregion_",
                     2,
-                    [{ text: "🌍 Все регионы", data: "ALL" }]
+                    [{text: "🌍 Все регионы", data: "ALL"}]
                 );
 
                 await ctx.reply(
@@ -95,7 +116,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 );
                 return ctx.wizard.next();
             } else {
-                await ctx.reply("Регион выбран. Теперь выберите график работы.");
+                await ctx.reply(`Регион "${region.name}" выбран. Теперь выберите график работы.`);
                 return ctx.wizard.selectStep(4);
             }
         } catch (err) {
@@ -130,24 +151,29 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
     // Шаг 5 — выбор графика работы
     async (ctx) => {
+        // Обработка первого входа на шаг
         if (!ctx.callbackQuery) {
             try {
-                const scheduleRes = await axios.get("https://api.hh.ru/schedules");
-                const schedules = scheduleRes.data || [];
+                const response = await axios.get<Array<{
+                    id: string;
+                    name: string;
+                }>>("https://api.hh.ru/schedules");
 
-                const scheduleOptions = schedules.map((s: any) => ({
-                    ...s,
-                    name: s.name || `График: ${s.id}`
+                const schedules = response.data.map(s => ({
+                    id: s.id,
+                    name: s.name || `График ${s.id}`
                 }));
 
                 const keyboard = buildKeyboardButtons(
-                    scheduleOptions,
+                    schedules,
                     "select_schedule_",
                     2,
-                    [{ text: "❌ Не важно", data: "ANY" }]
+                    [{text: "❌ Не важно", data: "ANY"}]
                 );
 
-                await ctx.reply("Выберите желаемый график работы:", keyboard);
+                await ctx.reply("Выберите желаемый график работы:", {
+                    reply_markup: keyboard.reply_markup
+                });
             } catch (err) {
                 console.error("Ошибка получения графиков работы:", err);
                 await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
@@ -191,7 +217,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     employmentOptions,
                     "select_employment_",
                     2,
-                    [{ text: "❌ Не важно", data: "ANY" }]
+                    [{text: "❌ Не важно", data: "ANY"}]
                 );
 
                 await ctx.reply("Выберите тип занятости:", keyboard);
@@ -241,7 +267,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     areaOptions,
                     "select_profarea_",
                     1,
-                    [{ text: "❌ Не важно", data: "ANY" }]
+                    [{text: "❌ Не важно", data: "ANY"}]
                 );
 
                 await ctx.reply("Выберите профессиональную область:", keyboard);

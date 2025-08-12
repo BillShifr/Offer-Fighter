@@ -1,4 +1,5 @@
 import axios from "axios";
+import {HHRegion} from "../types";
 
 const BACKEND_URL = process.env.BACKEND_URL!;
 
@@ -21,5 +22,16 @@ export async function searchVacancies(payload: any): Promise<any[]> {
     } catch (e) {
         console.error("Ошибка поиска:", e);
         return [];
+    }
+}
+
+
+export async function getHHRegions(): Promise<any> {
+    try {
+        const response = await axios.get<any[]>("https://api.hh.ru/areas");
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching regions:", error);
+        throw new Error("Failed to fetch regions");
     }
 }
