@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start-bot": "node --loader ts-node/esm index.ts"
+    "start-bot": "ts-node-esm index.ts"
   },
   "keywords": [],
   "author": "",
