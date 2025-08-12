@@ -39,7 +39,7 @@ const userSchema = new mongoose.Schema({
     subscribed: {type: Boolean, default: false},
 });
 
-const User: Model<IUser> = mongoose.model<IUser>("User", userSchema);
+const User = mongoose.model<any>("User", userSchema);
 
 // === OAuth hh.ru: redirect to HH auth page ===
 app.get("/auth/hh", (req: Request, res: Response) => {
