@@ -33,7 +33,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         try {
             const res = await axios.get(`${BACKEND_URL}/user/${telegramId}/resumes`);
-            const resumes = res.data;
+            const resumes = res.data.items || [];
 
             if (!Array.isArray(resumes) || !resumes.length) {
                 await ctx.reply("Резюме не найдено. Пожалуйста, авторизуйтесь через /start.");
