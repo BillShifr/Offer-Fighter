@@ -54,7 +54,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             }
 
             const keyboard = buildKeyboardButtons(resumes, "select_resume_");
-            await ctx.reply("Выберите резюме:", keyboard);
+            await ctx.reply("Выберите резюме:", {reply_markup: keyboard.reply_markup});
             return ctx.wizard.next();
         } catch (err) {
             console.error("Ошибка получения резюме:", err);
@@ -83,7 +83,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             // Возьмём страны (id 113 — Россия, но можем показать все)
             const countries = regionsRes.data.filter((r: any) => r.type === "country");
             const keyboard = buildKeyboardButtons(countries, "select_region_");
-            await ctx.reply("Выберите страну / регион:", keyboard);
+            await ctx.reply("Выберите страну / регион:", {reply_markup: keyboard.reply_markup});
             return ctx.wizard.next();
         } catch (err) {
             console.error("Ошибка получения регионов:", err);
@@ -125,7 +125,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             if (selectedRegion && selectedRegion.areas && selectedRegion.areas.length) {
                 // Есть дочерние области — показываем их кнопками
                 const keyboard = buildKeyboardButtons(selectedRegion.areas, "select_subregion_");
-                await ctx.reply("Выберите область:", keyboard);
+                await ctx.reply("Выберите область:", {reply_markup: keyboard.reply_markup});
                 return ctx.wizard.next();
             } else {
                 // Нет дочерних областей — пропускаем шаг выбора области
@@ -163,7 +163,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const scheduleRes = await axios.get("https://api.hh.ru/schedules");
                 const schedules = scheduleRes.data || [];
                 const keyboard = buildKeyboardButtons(schedules, "select_schedule_");
-                await ctx.reply("Выберите желаемый график работы:", keyboard);
+                await ctx.reply("Выберите желаемый график работы:", {reply_markup: keyboard.reply_markup});
             } catch (err) {
                 console.error("Ошибка получения графиков работы:", err);
                 await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
@@ -190,7 +190,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const empRes = await axios.get("https://api.hh.ru/employments");
                 const employments = empRes.data || [];
                 const keyboard = buildKeyboardButtons(employments, "select_employment_");
-                await ctx.reply("Выберите тип занятости:", keyboard);
+                await ctx.reply("Выберите тип занятости:", {reply_markup: keyboard.reply_markup});
             } catch (err) {
                 console.error("Ошибка получения типов занятости:", err);
                 await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
@@ -217,7 +217,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const profRes = await axios.get("https://api.hh.ru/professional_areas");
                 const profAreas = profRes.data || [];
                 const keyboard = buildKeyboardButtons(profAreas, "select_profarea_");
-                await ctx.reply("Выберите профессиональную область:", keyboard);
+                await ctx.reply("Выберите профессиональную область:", {reply_markup: keyboard.reply_markup});
             } catch (err) {
                 console.error("Ошибка получения профобластей:", err);
                 await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
@@ -304,7 +304,7 @@ bot.start(async (ctx) => {
     await ctx.replyWithMarkdownV2(
         `👋 *Привет, ${firstName}\\!*\\n\n` +
         `Для начала работы — авторизуйся через hh\\.ru:`,
-        Markup.inlineKeyboard([Markup.button.url("🚀 Авторизоваться на hh.ru", authUrl)])
+        {reply_markup: Markup.inlineKeyboard([Markup.button.url("🚀 Авторизоваться на hh.ru", authUrl)]).reply_markup}
     );
 });
 
