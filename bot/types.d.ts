@@ -10,9 +10,7 @@ export interface JobSearchSession {
     coverLetter?: string;
 }
 
-export interface JobSearchContext extends Scenes.WizardContext {
-    session: JobSearchSession;
-}
+export interface JobSearchContext extends Scenes.WizardContext<JobSearchSession> {}
 
 export interface Vacancy {
     id: string;
