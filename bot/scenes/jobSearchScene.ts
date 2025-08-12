@@ -154,15 +154,16 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         // Обработка первого входа на шаг
         if (!ctx.callbackQuery) {
             try {
-                const response = await axios.get<Array<{
-                    id: string;
-                    name: string;
-                }>>("https://api.hh.ru/schedules");
+                console.log("Fetching schedules from HH API...");
+                const response = await axios.get("https://api.hh.ru/schedules");
+                console.log("Schedules API response:", response.data);
 
-                const schedules = response.data.map(s => ({
+                const schedules = response.data.map((s: any) => ({
                     id: s.id,
-                    name: s.name || `График ${s.id}`
+                    name: s.name
                 }));
+
+                console.log("Processed schedules:", schedules);
 
                 const keyboard = buildKeyboardButtons(
                     schedules,
@@ -171,9 +172,12 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     [{text: "❌ Не важно", data: "ANY"}]
                 );
 
-                await ctx.reply("Выберите желаемый график работы:", {
-                    reply_markup: keyboard.reply_markup
-                });
+                console.log("Keyboard markup:", keyboard.reply_markup);
+
+                await ctx.reply(
+                    "Выберите желаемый график работы:",
+                    keyboard
+                );
             } catch (err) {
                 console.error("Ошибка получения графиков работы:", err);
                 await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
