@@ -1,7 +1,7 @@
 import { Markup, Scenes, session, Telegraf } from "telegraf";
 import * as dotenv from "dotenv";
 import axios from "axios";
-import { JobSearchContext, JobSearchSession } from "./types";
+import { JobSearchContext, JobSearchSession, Vacancy } from "./types";
 
 dotenv.config();
 
@@ -19,10 +19,20 @@ function hasCallbackData(q: any): q is { data: string } {
 }
 
 // Утилита для построения inline клавиатуры
-function buildKeyboardButtons(items: any[], cbPrefix: string, columns = 2) {
+function buildKeyboardButtons(
+    items: any[],
+    cbPrefix: string,
+    columns = 2,
+    additionalButtons: { text: string; data: string }[] = []
+) {
     const buttons = items.map((item) =>
         Markup.button.callback(item.name || item.title || item.id, `${cbPrefix}${item.id}`)
     );
+
+    // Добавляем дополнительные кнопки
+    additionalButtons.forEach(btn => {
+        buttons.unshift(Markup.button.callback(btn.text, `${cbPrefix}${btn.data}`));
+    });
 
     const rows = [];
     for (let i = 0; i < buttons.length; i += columns) {
@@ -30,6 +40,23 @@ function buildKeyboardButtons(items: any[], cbPrefix: string, columns = 2) {
     }
 
     return Markup.inlineKeyboard(rows);
+}
+
+// Форматирование зарплаты
+function formatSalary(salary?: {
+    from?: number;
+    to?: number;
+    currency?: string;
+    gross?: boolean;
+}): string {
+    if (!salary) return "Не указана";
+
+    const from = salary.from ? Math.round(salary.from).toLocaleString() : "?";
+    const to = salary.to ? Math.round(salary.to).toLocaleString() : "?";
+    const currency = salary.currency || "";
+    const gross = salary.gross ? " (до вычета налогов)" : " (на руки)";
+
+    return `${from}-${to} ${currency}${gross}`;
 }
 
 const jobSearchWizard = new WizardScene<JobSearchContext>(
@@ -45,8 +72,6 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         try {
             const res = await axios.get(`${BACKEND_URL}/user/${telegramId}/resumes`);
-
-            // Исправление: правильный путь к резюме
             const resumes = res.data.items || res.data || [];
 
             if (!Array.isArray(resumes) || !resumes.length) {
@@ -81,7 +106,6 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
         // Запрашиваем регионы с hh API
         try {
             const regionsRes = await axios.get("https://api.hh.ru/areas");
-            // Исправление: правильный формат данных
             const countries = regionsRes.data.filter((r: any) => !r.parent_id);
 
             const keyboard = buildKeyboardButtons(countries, "select_region_", 3);
@@ -113,11 +137,22 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             const region = regionsRes.data.find((r: any) => String(r.id) === regionId);
 
             if (region && region.areas && region.areas.length) {
-                const keyboard = buildKeyboardButtons(region.areas, "select_subregion_");
-                await ctx.reply("Выберите область:", keyboard);
+                // Добавляем кнопку "Все регионы" в начало
+                const keyboard = buildKeyboardButtons(
+                    region.areas,
+                    "select_subregion_",
+                    2,
+                    [{ text: "🌍 Все регионы", data: "ALL" }]
+                );
+
+                await ctx.reply(
+                    `Вы выбрали: ${region.name}\n\n` +
+                    "Хотите выбрать конкретную область или искать по всем регионам?",
+                    keyboard
+                );
                 return ctx.wizard.next();
             } else {
-                // Переход к шагу выбора графика работы
+                // Нет подрегионов - переходим к следующему шагу
                 await ctx.reply("Регион выбран. Теперь выберите график работы.");
                 return ctx.wizard.selectStep(4);
             }
@@ -138,10 +173,17 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         const subregionId = cb.data.replace("select_subregion_", "");
         const session = ctx.session as JobSearchSession;
-        session.region = subregionId;
 
-        await ctx.answerCbQuery();
-        await ctx.reply("Область выбрана. Теперь выберите график работы.");
+        if (subregionId === "ALL") {
+            // Оставляем выбранный родительский регион
+            await ctx.answerCbQuery("Выбраны все регионы");
+            await ctx.reply("✅ Выбраны все регионы. Теперь выберите график работы.");
+        } else {
+            session.region = subregionId;
+            await ctx.answerCbQuery();
+            await ctx.reply("Область выбрана. Теперь выберите график работы.");
+        }
+
         return ctx.wizard.next();
     },
 
@@ -153,13 +195,19 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const scheduleRes = await axios.get("https://api.hh.ru/schedules");
                 const schedules = scheduleRes.data || [];
 
-                // Исправление: добавление названий для кнопок
+                // Добавляем кнопку "Не важно"
                 const scheduleOptions = schedules.map((s: any) => ({
                     ...s,
                     name: s.name || `График: ${s.id}`
                 }));
 
-                const keyboard = buildKeyboardButtons(scheduleOptions, "select_schedule_");
+                const keyboard = buildKeyboardButtons(
+                    scheduleOptions,
+                    "select_schedule_",
+                    2,
+                    [{ text: "❌ Не важно", data: "ANY" }]
+                );
+
                 await ctx.reply("Выберите желаемый график работы:", keyboard);
             } catch (err) {
                 console.error("Ошибка получения графиков работы:", err);
@@ -177,10 +225,14 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         const scheduleId = cb.data.replace("select_schedule_", "");
         const session = ctx.session as JobSearchSession;
-        session.workSchedule = scheduleId;
+        session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
         await ctx.answerCbQuery();
-        await ctx.reply("График выбран. Теперь выберите тип занятости.");
+        await ctx.reply(
+            scheduleId === "ANY"
+                ? "✅ График работы: не важно. Теперь выберите тип занятости."
+                : "✅ График выбран. Теперь выберите тип занятости."
+        );
         return ctx.wizard.next();
     },
 
@@ -192,13 +244,19 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const empRes = await axios.get("https://api.hh.ru/employments");
                 const employments = empRes.data || [];
 
-                // Исправление: добавление названий для кнопок
+                // Добавляем кнопку "Не важно"
                 const employmentOptions = employments.map((e: any) => ({
                     ...e,
                     name: e.name || `Тип: ${e.id}`
                 }));
 
-                const keyboard = buildKeyboardButtons(employmentOptions, "select_employment_");
+                const keyboard = buildKeyboardButtons(
+                    employmentOptions,
+                    "select_employment_",
+                    2,
+                    [{ text: "❌ Не важно", data: "ANY" }]
+                );
+
                 await ctx.reply("Выберите тип занятости:", keyboard);
             } catch (err) {
                 console.error("Ошибка получения типов занятости:", err);
@@ -216,10 +274,14 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         const employmentId = cb.data.replace("select_employment_", "");
         const session = ctx.session as JobSearchSession;
-        session.employmentType = employmentId;
+        session.employmentType = employmentId === "ANY" ? undefined : employmentId;
 
         await ctx.answerCbQuery();
-        await ctx.reply("Тип занятости выбран. Теперь выберите профессиональную область.");
+        await ctx.reply(
+            employmentId === "ANY"
+                ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
+        );
         return ctx.wizard.next();
     },
 
@@ -231,16 +293,23 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 const profRes = await axios.get("https://api.hh.ru/professional_areas");
                 const profAreas = profRes.data || [];
 
-                // Исправление: правильный формат профессиональных областей
+                // Форматируем профобласти
                 const areaOptions = profAreas.flatMap((group: any) =>
-                    group.categories.map((cat: any) => ({
+                    (group.categories || []).map((cat: any) => ({
                         id: cat.id,
                         name: cat.name,
                         title: cat.name
                     }))
                 );
 
-                const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 1);
+                // Добавляем кнопку "Не важно"
+                const keyboard = buildKeyboardButtons(
+                    areaOptions,
+                    "select_profarea_",
+                    1,
+                    [{ text: "❌ Не важно", data: "ANY" }]
+                );
+
                 await ctx.reply("Выберите профессиональную область:", keyboard);
             } catch (err) {
                 console.error("Ошибка получения профобластей:", err);
@@ -258,10 +327,14 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
 
         const profAreaId = cb.data.replace("select_profarea_", "");
         const session = ctx.session as JobSearchSession;
-        session.professionalArea = profAreaId;
+        session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
 
         await ctx.answerCbQuery();
-        await ctx.reply("Введите ключевые слова для поиска (через пробел):");
+        await ctx.reply(
+            profAreaId === "ANY"
+                ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
+        );
         return ctx.wizard.next();
     },
 
@@ -275,19 +348,20 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
         const session = ctx.session as JobSearchSession;
         session.keywords = ctx.message.text.trim();
 
-        await ctx.reply("Введите сопроводительное письмо:");
+        await ctx.reply("Введите сопроводительное письмо (или отправьте '-' чтобы пропустить):");
         return ctx.wizard.next();
     },
 
     // Шаг 9 — сопроводительное письмо и поиск
     async (ctx) => {
         if (!ctx.message || !("text" in ctx.message)) {
-            await ctx.reply("Пожалуйста, введите сопроводительное письмо.");
+            await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
             return;
         }
 
         const session = ctx.session as JobSearchSession;
-        session.coverLetter = ctx.message.text.trim();
+        const coverLetter = ctx.message.text.trim();
+        session.coverLetter = coverLetter === '-' ? undefined : coverLetter;
 
         try {
             const telegramId = ctx.from?.id;
@@ -302,24 +376,39 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 coverLetter: session.coverLetter,
             };
 
-            const res = await axios.post(`${BACKEND_URL}/search`, payload);
-            const vacancies = res.data || [];
+            await ctx.reply("🔍 Ищем подходящие вакансии...");
+
+            const res = await axios.post<Vacancy[]>(`${BACKEND_URL}/search`, payload);
+            const data = res.data;
+            const vacancies = Array.isArray(data) ? data : [];
 
             if (!vacancies.length) {
-                await ctx.reply("Вакансий не найдено.");
+                await ctx.reply("😔 К сожалению, по вашим критериям вакансий не найдено.");
             } else {
+                await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
+
                 for (const v of vacancies.slice(0, 10)) {
-                    await ctx.replyWithMarkdown(
-                        `*${v.name}*\n` +
-                        `Компания: ${v.employer?.name || "Не указано"}\n` +
-                        `Зарплата: ${v.salary?.from || "?"}-${v.salary?.to || "?"} ${v.salary?.currency || ""}\n` +
-                        `[Открыть вакансию](${v.alternate_url || v.url})`
-                    );
+                    try {
+                        await ctx.replyWithMarkdown(
+                            `*${v.name}*\n` +
+                            `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
+                            `💰 Зарплата: ${formatSalary(v.salary)}\n` +
+                            `📍 Регион: ${v.area?.name || "Не указан"}\n` +
+                            `📅 Опубликовано: ${new Date(v.published_at).toLocaleDateString() || "Неизвестно"}`,
+                            Markup.inlineKeyboard([
+                                Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
+                            ])
+                        );
+                    } catch (e) {
+                        console.error("Ошибка отправки вакансии:", e);
+                        await ctx.reply("Не удалось отправить информацию о вакансии");
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 300)); // Задержка между сообщениями
                 }
             }
         } catch (e) {
             console.error("Ошибка поиска:", e);
-            await ctx.reply("Ошибка при поиске вакансий.");
+            await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
         }
 
         return ctx.scene.leave();
@@ -351,5 +440,18 @@ bot.action("start_search", async (ctx) => {
 });
 
 bot.command("search", (ctx) => ctx.scene.enter("job-search-wizard"));
+
+bot.command("help", (ctx) => {
+    return ctx.replyWithMarkdown(
+        "🤖 *Помощь по боту:*\n\n" +
+        "*/start* - Начать работу с ботом\n" +
+        "*/search* - Начать новый поиск вакансий\n" +
+        "*/help* - Показать это сообщение\n\n" +
+        "После авторизации вы сможете искать вакансии по вашему резюме с HH.ru."
+    );
+});
+
+process.once("SIGINT", () => bot.stop("SIGINT"));
+process.once("SIGTERM", () => bot.stop("SIGTERM"));
 
 bot.launch().then(() => console.log("Bot started")).catch(console.error);
