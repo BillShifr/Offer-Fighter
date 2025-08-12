@@ -1,11 +1,11 @@
-import { Telegraf, Markup, Scenes, session } from "telegraf";
+import {Markup, Scenes, session, Telegraf} from "telegraf";
 import dotenv from "dotenv";
 import axios from "axios";
 
 dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-const { WizardScene, Stage } = Scenes;
+const {WizardScene, Stage} = Scenes;
 
 bot.use(session());
 
@@ -34,9 +34,9 @@ const jobSearchWizard = new WizardScene(
             // Разбиваем кнопки по 2 в ряд
             const keyboard = Markup.inlineKeyboard(
                 buttons.reduce((resultArray, item, index) => {
-                    const chunkIndex = Math.floor(index/2);
+                    const chunkIndex = Math.floor(index / 2);
 
-                    if(!resultArray[chunkIndex]) {
+                    if (!resultArray[chunkIndex]) {
                         resultArray[chunkIndex] = [];
                     }
 
@@ -194,6 +194,11 @@ bot.start(async (ctx) => {
     );
 });
 
+bot.action("start_search", (ctx) => {
+    ctx.answerCbQuery();
+    ctx.scene.enter("job-search-wizard");
+});
+
 // Команда для запуска поиска по шагам
 bot.command("search", (ctx) => ctx.scene.enter("job-search-wizard"));
 
@@ -216,7 +221,7 @@ bot.command('subscribe', async (ctx) => {
             amount: 299, // цена подписки, например
         });
 
-        const { paymentUrl } = res.data;
+        const {paymentUrl} = res.data;
         await ctx.reply(`Для оформления подписки перейдите по ссылке:\n${paymentUrl}`);
     } catch (e) {
         console.error(e);

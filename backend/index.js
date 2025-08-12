@@ -2,8 +2,8 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
+// В начале файла
 import axios from "axios";
-import { v4 as uuidv4 } from 'uuid';
 // import { PaymentsApi, Configuration } from 'yookassa-sdk';
 
 dotenv.config();
@@ -23,19 +23,19 @@ mongoose.connect(process.env.MONGODB_URI)
     .catch(e => console.error("MongoDB connection error:", e));
 
 const userSchema = new mongoose.Schema({
-    telegramId: { type: String, required: true, unique: true },
+    telegramId: {type: String, required: true, unique: true},
     hhAccessToken: String,
     hhRefreshToken: String,
     hhExpiresAt: Date,
     resumeId: String,
     filters: Object,
-    subscribed: { type: Boolean, default: false },
+    subscribed: {type: Boolean, default: false},
 });
 const User = mongoose.model("User", userSchema);
 
 // --- OAuth hh.ru ---
 app.get("/auth/hh", (req, res) => {
-    const { telegramId } = req.query;
+    const {telegramId} = req.query;
     if (!telegramId) return res.status(400).send("telegramId required");
     const params = new URLSearchParams({
         response_type: "code",
@@ -46,9 +46,10 @@ app.get("/auth/hh", (req, res) => {
     res.redirect(`https://hh.ru/oauth/authorize?${params.toString()}`);
 });
 
+// ...
 app.get("/auth/callback", async (req, res) => {
     try {
-        const { code, state: telegramId } = req.query;
+        const {code, state: telegramId} = req.query;
         if (!code || !telegramId) return res.status(400).send("Missing code or state");
 
         const tokenRes = await axios.post("https://hh.ru/oauth/token", null, {
@@ -61,18 +62,29 @@ app.get("/auth/callback", async (req, res) => {
             },
         });
 
-        const { access_token, refresh_token, expires_in } = tokenRes.data;
+        const {access_token, refresh_token, expires_in} = tokenRes.data;
         const expiresAt = new Date(Date.now() + expires_in * 1000);
 
-        const user = await User.findOneAndUpdate(
-            { telegramId },
+        await User.findOneAndUpdate(
+            {telegramId},
             {
                 hhAccessToken: access_token,
                 hhRefreshToken: refresh_token,
                 hhExpiresAt: expiresAt,
             },
-            { upsert: true, new: true }
+            {upsert: true, new: true}
         );
+
+        // Уведомление пользователя в Telegram
+        await axios.post(`https://api.telegram.org/bot${process.env.BOT_TOKEN}/sendMessage`, {
+            chat_id: telegramId,
+            text: "✅ Авторизация на hh.ru прошла успешно!\n\nНажми кнопку ниже, чтобы начать поиск вакансий:",
+            reply_markup: {
+                inline_keyboard: [
+                    [{text: "🔍 Начать поиск", callback_data: "start_search"}]
+                ]
+            }
+        });
 
         res.send(`Авторизация успешна! Можно закрыть это окно и вернуться в Telegram.\nTelegram ID: ${telegramId}`);
     } catch (error) {
@@ -84,43 +96,43 @@ app.get("/auth/callback", async (req, res) => {
 // --- Получить данные пользователя ---
 app.get("/user/:telegramId", async (req, res) => {
     try {
-        const user = await User.findOne({ telegramId: req.params.telegramId });
-        if (!user) return res.status(404).json({ error: "Пользователь не найден" });
+        const user = await User.findOne({telegramId: req.params.telegramId});
+        if (!user) return res.status(404).json({error: "Пользователь не найден"});
         res.json(user);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({error: e.message});
     }
 });
 
 // --- Получить резюме пользователя с HH ---
 app.get("/user/:telegramId/resumes", async (req, res) => {
     try {
-        const user = await User.findOne({ telegramId: req.params.telegramId });
-        if (!user || !user.hhAccessToken) return res.status(404).json({ error: "Нет токена HH или пользователь" });
+        const user = await User.findOne({telegramId: req.params.telegramId});
+        if (!user || !user.hhAccessToken) return res.status(404).json({error: "Нет токена HH или пользователь"});
 
         const hhRes = await axios.get("https://api.hh.ru/resumes/mine", {
-            headers: { Authorization: `Bearer ${user.hhAccessToken}` },
+            headers: {Authorization: `Bearer ${user.hhAccessToken}`},
         });
         res.json(hhRes.data);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({error: e.message});
     }
 });
 
 // --- Выбрать резюме ---
 app.post("/user/:telegramId/selectResume", async (req, res) => {
     try {
-        const { resumeId } = req.body;
-        if (!resumeId) return res.status(400).json({ error: "resumeId обязателен" });
+        const {resumeId} = req.body;
+        if (!resumeId) return res.status(400).json({error: "resumeId обязателен"});
 
         const user = await User.findOneAndUpdate(
-            { telegramId: req.params.telegramId },
-            { resumeId },
-            { new: true }
+            {telegramId: req.params.telegramId},
+            {resumeId},
+            {new: true}
         );
         res.json(user);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({error: e.message});
     }
 });
 
@@ -129,24 +141,24 @@ app.post("/user/:telegramId/filters", async (req, res) => {
     try {
         const filters = req.body;
         const user = await User.findOneAndUpdate(
-            { telegramId: req.params.telegramId },
-            { filters },
-            { new: true }
+            {telegramId: req.params.telegramId},
+            {filters},
+            {new: true}
         );
         res.json(user);
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({error: e.message});
     }
 });
 
 // --- Проверить подписку ---
 app.get("/user/:telegramId/subscription", async (req, res) => {
     try {
-        const user = await User.findOne({ telegramId: req.params.telegramId });
-        if (!user) return res.status(404).json({ error: "Пользователь не найден" });
-        res.json({ subscribed: user.subscribed });
+        const user = await User.findOne({telegramId: req.params.telegramId});
+        if (!user) return res.status(404).json({error: "Пользователь не найден"});
+        res.json({subscribed: user.subscribed});
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        res.status(500).json({error: e.message});
     }
 });
 
