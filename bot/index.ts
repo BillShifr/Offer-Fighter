@@ -54,7 +54,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             }
 
             const keyboard = buildKeyboardButtons(resumes, "select_resume_");
-            await ctx.reply("Выберите резюме:", {reply_markup: keyboard.reply_markup});
+            await ctx.reply("Выберите резюме:", keyboard);
             return ctx.wizard.next();
         } catch (err) {
             console.error("Ошибка получения резюме:", err);
@@ -83,7 +83,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             // Возьмём страны (id 113 — Россия, но можем показать все)
             const countries = regionsRes.data.filter((r: any) => r.type === "country");
             const keyboard = buildKeyboardButtons(countries, "select_region_");
-            await ctx.reply("Выберите страну / регион:", {reply_markup: keyboard.reply_markup});
+            await ctx.reply("Выберите страну / регион:", keyboard);
             return ctx.wizard.next();
         } catch (err) {
             console.error("Ошибка получения регионов:", err);
@@ -110,7 +110,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
             const regionsRes = await axios.get("https://api.hh.ru/areas");
 
             // Найдём выбранный регион
-            function findRegion(arr: any[], id: string): any | null {
+            const findRegion = (arr: any[], id: string): any | null => {
                 for (const r of arr) {
                     if (String(r.id) === id) return r;
                     if (r.areas) {
@@ -119,7 +119,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                     }
                 }
                 return null;
-            }
+            };
 
             const selectedRegion = findRegion(regionsRes.data, regionId);
             if (selectedRegion && selectedRegion.areas && selectedRegion.areas.length) {
@@ -129,7 +129,7 @@ const jobSearchWizard = new WizardScene<JobSearchContext>(
                 return ctx.wizard.next();
             } else {
                 // Нет дочерних областей — пропускаем шаг выбора области
-                return ctx.wizard.steps[4](ctx); // Перейти к шагу 4 (график работы)
+                return ctx.wizard.selectStep(4); // Перейти к шагу 4 (график работы)
             }
         } catch (err) {
             console.error("Ошибка получения областей:", err);
