@@ -20,5 +20,10 @@
     "mongoose": "^8.17.1",
     "uuid": "^11.1.0",
     "yookassa-sdk": "^0.0.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.2"
   }
 }
