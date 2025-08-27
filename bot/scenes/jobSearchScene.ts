@@ -151,59 +151,48 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
     // Шаг 5 — выбор графика работы
     async (ctx) => {
-        // Обработка первого входа на шаг
-        if (!ctx.callbackQuery) {
-            try {
-                console.log("Fetching schedules from HH API...");
-                const response = await axios.get("https://api.hh.ru/schedules");
-                console.log("Schedules API response:", response.data);
-
-                const schedules = response.data.map((s: any) => ({
-                    id: s.id,
-                    name: s.name
-                }));
-
-                console.log("Processed schedules:", schedules);
-
-                const keyboard = buildKeyboardButtons(
-                    schedules,
-                    "select_schedule_",
-                    2,
-                    [{text: "❌ Не важно", data: "ANY"}]
-                );
-
-                console.log("Keyboard markup:", keyboard.reply_markup);
-
-                await ctx.reply(
-                    "Выберите желаемый график работы:",
-                    keyboard
-                );
-            } catch (err) {
-                console.error("Ошибка получения графиков работы:", err);
-                await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
-                return ctx.scene.leave();
-            }
-            return;
-        }
-
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_schedule_")) {
-            await ctx.reply("Пожалуйста, выберите график работы нажатием на кнопку.");
-            return;
-        }
-
-        const scheduleId = cb.data.replace("select_schedule_", "");
         const session = ctx.session as JobSearchSession;
-        session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            scheduleId === "ANY"
-                ? "✅ График работы: не важно. Теперь выберите тип занятости."
-                : "✅ График выбран. Теперь выберите тип занятости."
-        );
-        return ctx.wizard.next();
+        // Если есть callbackQuery с выбором графика — обработать его
+        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery) && ctx.callbackQuery.data.startsWith("select_schedule_")) {
+            const scheduleId = ctx.callbackQuery.data.replace("select_schedule_", "");
+            session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                scheduleId === "ANY"
+                    ? "✅ График работы: не важно. Теперь выберите тип занятости."
+                    : "✅ График выбран. Теперь выберите тип занятости."
+            );
+            return ctx.wizard.next(); // Возвращаем, чтобы шаг завершился
+        }
+
+        // Построение клавиатуры для первого входа на шаг
+        try {
+            const response = await axios.get("https://api.hh.ru/schedules");
+            const schedules = response.data.map((s: any) => ({
+                id: s.id,
+                name: s.name
+            }));
+
+            const keyboard = buildKeyboardButtons(
+                schedules,
+                "select_schedule_",
+                2,
+                [{text: "❌ Не важно", data: "ANY"}]
+            );
+
+            await ctx.reply(
+                "Выберите желаемый график работы:",
+                keyboard
+            );
+        } catch (err) {
+            console.error("Ошибка получения графиков работы:", err);
+            await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
+            return ctx.scene.leave();
+        }
     },
+
 
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
