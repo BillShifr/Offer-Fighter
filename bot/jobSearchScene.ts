@@ -134,20 +134,17 @@ export const jobSearchWizard = new WizardScene<>(
         return ctx.wizard.next();
     },
 
-    // Шаг 5 — выбор графика работы
-// Шаг 5 — выбор графика работы (исправленный)
+// Шаг 5 — выбор графика работы
     async (ctx) => {
         const cb = ctx.callbackQuery;
 
-        // Если это callback выбора расписания — обрабатываем его
+        // Обрабатываем только корректные callbackи от графика
         if (hasCallbackData(cb) && cb.data.startsWith("select_schedule_")) {
             const scheduleId = cb.data.replace("select_schedule_", "");
             const session = ctx.session as JobSearchSession;
             session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
-            // Убираем "часики" в телеграме
-            await ctx.answerCbQuery().catch(() => {});
-
+            await ctx.answerCbQuery();
             await ctx.reply(
                 scheduleId === "ANY"
                     ? "✅ График работы: не важно. Теперь выберите тип занятости."
@@ -156,28 +153,20 @@ export const jobSearchWizard = new WizardScene<>(
             return ctx.wizard.next();
         }
 
-        // Во всех остальных случаях — показываем клавиатуру с вариантами расписания.
-        // (например: при входе в шаг после нажатия кнопки предыдущего шага,
-        // тогда callbackQuery может быть от предыдущей кнопки)
-        try {
-            // если есть какой-то callback от предыдущего шага — ответим, чтобы убрать спиннер
-            if (hasCallbackData(cb)) {
-                await ctx.answerCbQuery().catch(() => {});
-            }
+        // Если callback не от графика (например, остаток от предыдущего шага) — очищаем и показываем кнопки
+        if (cb) {
+            await ctx.answerCbQuery(); // Важно: отвечаем на любой старый callback
+        }
 
+        try {
             const scheduleRes = await axios.get("https://api.hh.ru/schedules");
             const schedules = scheduleRes.data || [];
 
-            const scheduleOptions = schedules.map((s: any) => ({
-                ...s,
-                name: s.name || `График: ${s.id}`
-            }));
-
             const keyboard = buildKeyboardButtons(
-                scheduleOptions,
+                schedules,
                 "select_schedule_",
                 2,
-                [{ text: "❌ Не важно", data: "select_schedule_ANY" }]
+                [{ text: "❌ Не важно", data: "ANY" }]
             );
 
             await ctx.reply("Выберите желаемый график работы:", keyboard);
@@ -186,9 +175,7 @@ export const jobSearchWizard = new WizardScene<>(
             await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
             return ctx.scene.leave();
         }
-        return;
     },
-
 
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
