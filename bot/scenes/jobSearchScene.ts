@@ -1,9 +1,9 @@
 import {Markup, Scenes} from "telegraf";
 import axios from "axios";
 import {HHRegion, JobSearchContext, JobSearchSession} from "../types";
-import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils";
-import {formatSalary} from "../utils/salaryUtils";
-import {getUserResumes, searchVacancies} from "../utils/apiUtils";
+import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils.ts";
+import {formatSalary} from "../utils/salaryUtils.ts";
+import {getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     "job-search-wizard",
