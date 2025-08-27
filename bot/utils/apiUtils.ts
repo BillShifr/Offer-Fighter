@@ -3,6 +3,8 @@ import {HHRegion} from "../types";
 
 const BACKEND_URL = process.env.BACKEND_URL!;
 
+if (!BACKEND_URL) throw new Error("BACKEND_URL не задан в .env");
+
 // Получение резюме пользователя
 export async function getUserResumes(telegramId: number) {
     try {

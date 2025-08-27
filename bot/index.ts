@@ -1,12 +1,13 @@
 // bot/index.ts
-import { Telegraf, Scenes, session } from "telegraf";
 import dotenv from "dotenv";
+dotenv.config();
+
+import { Telegraf, Scenes, session } from "telegraf";
+
 import { jobSearchWizard } from "./scenes/jobSearchScene.js";
 import { setupStartHandler } from "./handlers/startHandler.js";
 import { setupHelpHandler } from "./handlers/helpHandler.js";
 import { setupSearchHandler } from "./handlers/searchHandler.js";
-
-dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN!);
 
