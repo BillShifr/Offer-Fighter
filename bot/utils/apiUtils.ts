@@ -1,14 +1,17 @@
 import axios from "axios";
-import {HHRegion} from "../types";
+import { HHRegion } from "../types";
 
-const BACKEND_URL = process.env.BACKEND_URL!;
-
-if (!BACKEND_URL) throw new Error("BACKEND_URL не задан в .env");
+// функция для безопасного получения BACKEND_URL
+function getBackendUrl(): string {
+    const url = process.env.BACKEND_URL;
+    if (!url) throw new Error("BACKEND_URL не задан в .env");
+    return url;
+}
 
 // Получение резюме пользователя
 export async function getUserResumes(telegramId: number) {
     try {
-        const res = await axios.get(`${BACKEND_URL}/user/${telegramId}/resumes`);
+        const res = await axios.get(`${getBackendUrl()}/user/${telegramId}/resumes`);
         return res.data.items || res.data || [];
     } catch (err) {
         console.error("Ошибка получения резюме:", err);
@@ -19,7 +22,7 @@ export async function getUserResumes(telegramId: number) {
 // Поиск вакансий
 export async function searchVacancies(payload: any): Promise<any[]> {
     try {
-        const res = await axios.post(`${BACKEND_URL}/search`, payload);
+        const res = await axios.post(`${getBackendUrl()}/search`, payload);
         return res.data || [];
     } catch (e) {
         console.error("Ошибка поиска:", e);
@@ -27,10 +30,9 @@ export async function searchVacancies(payload: any): Promise<any[]> {
     }
 }
 
-
 export async function getHHRegions(): Promise<any> {
     try {
-        const response = await axios.get<any[]>("https://api.hh.ru/areas");
+        const response = await axios.get<HHRegion[]>("https://api.hh.ru/areas");
         return response.data;
     } catch (error) {
         console.error("Error fetching regions:", error);
