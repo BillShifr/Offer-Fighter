@@ -131,7 +131,9 @@ app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
             headers: {Authorization: `Bearer ${user.hhAccessToken}`},
         });
 
-        res.json(hhRes.data);
+        // HH API возвращает объект с items
+        const resumes = hhRes.data.items || [];
+        res.json(resumes);
     } catch (e) {
         console.error("Error fetching resumes:", (e as any).response?.data || (e as any).message);
         res.status(500).json({error: (e as Error).message});
