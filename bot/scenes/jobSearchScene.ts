@@ -6,425 +6,380 @@ import {formatSalary} from "../utils/salaryUtils.ts";
 import {getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
-    "job-search-wizard",
+        "job-search-wizard",
 
-    // Шаг 1 — получить резюме
-    async (ctx) => {
-        const telegramId = ctx.from?.id;
-        if (!telegramId) {
-            await ctx.reply("Не удалось определить ваш Telegram ID.");
-            return ctx.scene.leave();
-        }
-
-        try {
-            const resumes = await getUserResumes(telegramId);
-
-            if (!Array.isArray(resumes) || !resumes.length) {
-                await ctx.reply("Резюме не найдено. Пожалуйста, авторизуйтесь через /start.");
+        // Шаг 1 — получить резюме
+        async (ctx) => {
+            const telegramId = ctx.from?.id;
+            if (!telegramId) {
+                await ctx.reply("Не удалось определить ваш Telegram ID.");
                 return ctx.scene.leave();
             }
 
-            // Преобразуем резюме для отображения
-            const resumeOptions = resumes.map(resume => ({
-                id: resume.id,
-                name: resume.title || `Резюме ${resume.id.substring(0, 8)}...`
-            }));
+            try {
+                const resumes = await getUserResumes(telegramId);
 
-            const keyboard = buildKeyboardButtons(resumeOptions, "select_resume_");
-            await ctx.reply("Выберите резюме:", keyboard);
-            return ctx.wizard.next();
-        } catch (err) {
-            console.error("Ошибка получения резюме:", err);
-            await ctx.reply("Ошибка при получении резюме. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-    },
-
-    // Шаг 2 — выбор резюме
-    async (ctx) => {
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_resume_")) {
-            await ctx.reply("Пожалуйста, выберите резюме нажатием на кнопку.");
-            return;
-        }
-
-        const selectedResumeId = cb.data.replace("select_resume_", "");
-        const session = ctx.session as JobSearchSession;
-        session.selectedResumeId = selectedResumeId;
-
-        await ctx.answerCbQuery();
-
-        try {
-            const regions = await getHHRegions();
-            const countries = regions.filter((r: any) => !r.parent_id);
-
-            const keyboard = buildKeyboardButtons(countries, "select_region_", 3);
-            await ctx.reply("Выберите страну / регион:", keyboard);
-            return ctx.wizard.next();
-        } catch (err) {
-            console.error("Ошибка получения регионов:", err);
-            await ctx.reply("Ошибка при получении регионов. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-    },
-
-    // Шаг 3 — выбор региона
-    async (ctx) => {
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_region_")) {
-            await ctx.reply("Пожалуйста, выберите регион нажатием на кнопку.");
-            return;
-        }
-
-        const regionId = cb.data.replace("select_region_", "");
-        const session = ctx.session as JobSearchSession;
-        session.region = regionId;
-
-        await ctx.answerCbQuery();
-
-        try {
-            const regions = await getHHRegions();
-
-            // Функция для поиска региона в дереве
-            const findRegion = (items: HHRegion[], id: string): HHRegion | null => {
-                for (const item of items) {
-                    if (String(item.id) === id) return item;
-                    if (item.areas) {
-                        const found = findRegion(item.areas, id);
-                        if (found) return found;
-                    }
+                if (!Array.isArray(resumes) || !resumes.length) {
+                    await ctx.reply("Резюме не найдено. Пожалуйста, авторизуйтесь через /start.");
+                    return ctx.scene.leave();
                 }
-                return null;
-            };
 
-            const region = findRegion(regions as any, regionId);
+                // Преобразуем резюме для отображения
+                const resumeOptions = resumes.map(resume => ({
+                    id: resume.id,
+                    name: resume.title || `Резюме ${resume.id.substring(0, 8)}...`
+                }));
 
-            if (!region) {
-                await ctx.reply("Регион не найден. Пожалуйста, попробуйте снова.");
-                return ctx.wizard.selectStep(2);
-            }
-
-            if (region.areas && region.areas.length > 0) {
-                const keyboard = buildKeyboardButtons(
-                    region.areas.map(a => ({
-                        id: a.id,
-                        name: a.name
-                    })),
-                    "select_subregion_",
-                    2,
-                    [{text: "🌍 Все регионы", data: "ALL"}]
-                );
-
-                await ctx.reply(
-                    `Вы выбрали: ${region.name}\n\n` +
-                    "Хотите выбрать конкретную область или искать по всем регионам?",
-                    keyboard
-                );
+                const keyboard = buildKeyboardButtons(resumeOptions, "select_resume_");
+                await ctx.reply("Выберите резюме:", keyboard);
                 return ctx.wizard.next();
-            } else {
-                await ctx.reply(`Регион "${region.name}" выбран. Теперь выберите график работы.`);
-                return ctx.wizard.selectStep(4);
+            } catch (err) {
+                console.error("Ошибка получения резюме:", err);
+                await ctx.reply("Ошибка при получении резюме. Попробуйте позже.");
+                return ctx.scene.leave();
             }
-        } catch (err) {
-            console.error("Ошибка получения областей:", err);
-            await ctx.reply("Ошибка при получении областей. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-    },
+        },
 
-    // Шаг 4 — выбор подрегиона и показ графиков работы
-    async (ctx) => {
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
-            await ctx.reply("Пожалуйста, выберите область нажатием на кнопку.");
-            return;
-        }
-
-        const subregionId = cb.data.replace("select_subregion_", "");
-        const session = ctx.session as JobSearchSession;
-
-        if (subregionId === "ALL") {
-            await ctx.answerCbQuery("Выбраны все регионы");
-            await ctx.reply("✅ Выбраны все регионы. Теперь выберите график работы.");
-        } else {
-            session.region = subregionId;
-            await ctx.answerCbQuery();
-            await ctx.reply("Область выбрана. Теперь выберите график работы.");
-        }
-
-        try {
-            const response = await axios.get("https://api.hh.ru/dictionaries", {
-                headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
-            });
-            const dictionaries = response.data;
-
-            // Кнопки для графика работы
-            const scheduleOptions = dictionaries.schedule.map((s: any) => ({
-                id: s.id,
-                name: s.name
-            }));
-
-            const keyboard = buildKeyboardButtons(scheduleOptions, "select_schedule_", 2, [
-                {text: "❌ Не важно", data: "ANY"}
-            ]);
-
-            await ctx.reply("Выберите желаемый график работы:", keyboard);
-        } catch (err) {
-            console.error("Ошибка получения графиков работы:", err);
-            await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-
-        return ctx.wizard.next();
-    },
-
-// Шаг 5 — выбор графика работы и показ кнопок типа занятости
-    async (ctx) => {
-        const cb = ctx.callbackQuery;
-        if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_schedule_")) {
-            await ctx.reply("Пожалуйста, выберите график работы нажатием на кнопку.");
-            return;
-        }
-
-        const scheduleId = cb.data.replace("select_schedule_", "");
-        const session = ctx.session as JobSearchSession;
-        session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
-
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            scheduleId === "ANY"
-                ? "✅ График работы: не важно. Теперь выберите тип занятости."
-                : "✅ График выбран. Теперь выберите тип занятости."
-        );
-
-        // Показ кнопок типа занятости сразу после выбора графика
-        try {
-            const response = await axios.get("https://api.hh.ru/dictionaries", {
-                headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
-            });
-            const dictionaries = response.data;
-
-            const employmentOptions = dictionaries.employment.map((e: any) => ({
-                id: e.id,
-                name: e.name
-            }));
-
-            const keyboard = buildKeyboardButtons(employmentOptions, "select_employment_", 2, [
-                {text: "❌ Не важно", data: "ANY"}
-            ]);
-
-            await ctx.reply("Выберите тип занятости:", keyboard);
-        } catch (err) {
-            console.error("Ошибка получения типов занятости:", err);
-            await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-
-        return ctx.wizard.next();
-    },
-
-    // Шаг 6 — выбор типа занятости
-    async (ctx) => {
-        const cb = ctx.callbackQuery;
-
-        if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
-            await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
-            return;
-        }
-
-        const employmentId = cb.data.replace("select_employment_", "");
-        const session = ctx.session as JobSearchSession;
-        session.employmentType = employmentId === "ANY" ? undefined : employmentId;
-
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            employmentId === "ANY"
-                ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
-                : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
-        );
-
-        return ctx.wizard.next();
-    },
-
-// Шаг 7 — выбор профессиональной области (с пагинацией)
-    async (ctx) => {
-        // Обрабатываем callback от выбора проф. области
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
+        // Шаг 2 — выбор резюме
+        async (ctx) => {
             const cb = ctx.callbackQuery;
-
-            if (cb.data.startsWith("select_profarea_")) {
-                const profAreaId = cb.data.replace("select_profarea_", "");
-                const session = ctx.session as JobSearchSession;
-                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
-
-                await ctx.answerCbQuery();
-                await ctx.reply(
-                    profAreaId === "ANY"
-                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
-                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
-                );
-                return ctx.wizard.next();
-            } else if (cb.data.startsWith("profarea_page_")) {
-                // Обработка пагинации
-                const pageNum = parseInt(cb.data.replace("profarea_page_", ""));
-                await ctx.answerCbQuery();
-                await showProfessionalAreas(ctx, pageNum);
+            if (!hasCallbackData(cb) || !cb.data.startsWith("select_resume_")) {
+                await ctx.reply("Пожалуйста, выберите резюме нажатием на кнопку.");
                 return;
             }
 
+            const selectedResumeId = cb.data.replace("select_resume_", "");
+            const session = ctx.session as JobSearchSession;
+            session.selectedResumeId = selectedResumeId;
+
             await ctx.answerCbQuery();
-            return;
-        }
 
-        // Если нет callback, показываем первую страницу
-        await showProfessionalAreas(ctx, 1);
-    }
+            try {
+                const regions = await getHHRegions();
+                const countries = regions.filter((r: any) => !r.parent_id);
 
-// Функция для отображения профессиональных областей с пагинацией
-async function showProfessionalAreas(ctx: JobSearchContext, page: number) {
-    try {
-        const profRes = await axios.get("https://api.hh.ru/professional_roles", {
-            headers: {
-                'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                const keyboard = buildKeyboardButtons(countries, "select_region_", 3);
+                await ctx.reply("Выберите страну / регион:", keyboard);
+                return ctx.wizard.next();
+            } catch (err) {
+                console.error("Ошибка получения регионов:", err);
+                await ctx.reply("Ошибка при получении регионов. Попробуйте позже.");
+                return ctx.scene.leave();
             }
-        });
+        },
 
-        const categories = profRes.data.categories || [];
-        let allRoles: any[] = [];
-
-        categories.forEach(cat => {
-            if (cat.roles && Array.isArray(cat.roles)) {
-                allRoles = allRoles.concat(cat.roles);
+        // Шаг 3 — выбор региона
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+            if (!hasCallbackData(cb) || !cb.data.startsWith("select_region_")) {
+                await ctx.reply("Пожалуйста, выберите регион нажатием на кнопку.");
+                return;
             }
-        });
 
-        // Ограничиваем количество до 50 для демонстрации
-        const limitedRoles = allRoles.slice(0, 50);
+            const regionId = cb.data.replace("select_region_", "");
+            const session = ctx.session as JobSearchSession;
+            session.region = regionId;
 
-        // Пагинация: 10 элементов на страницу
-        const itemsPerPage = 10;
-        const totalPages = Math.ceil(limitedRoles.length / itemsPerPage);
-        const startIndex = (page - 1) * itemsPerPage;
-        const endIndex = Math.min(startIndex + itemsPerPage, limitedRoles.length);
+            await ctx.answerCbQuery();
 
-        const pageRoles = limitedRoles.slice(startIndex, endIndex);
+            try {
+                const regions = await getHHRegions();
 
-        const areaOptions = pageRoles.map(role => ({
-            id: role.id,
-            name: role.name.length > 20 ? role.name.substring(0, 20) + '...' : role.name
-        }));
+                // Функция для поиска региона в дереве
+                const findRegion = (items: HHRegion[], id: string): HHRegion | null => {
+                    for (const item of items) {
+                        if (String(item.id) === id) return item;
+                        if (item.areas) {
+                            const found = findRegion(item.areas, id);
+                            if (found) return found;
+                        }
+                    }
+                    return null;
+                };
 
-        // Создаем дополнительные кнопки для пагинации
-        const additionalButtons = [];
+                const region = findRegion(regions as any, regionId);
 
-        // Добавляем кнопки пагинации
-        if (totalPages > 1) {
-            if (page > 1) {
-                additionalButtons.push({text: '⬅️ Назад', data: `profarea_page_${page - 1}`});
+                if (!region) {
+                    await ctx.reply("Регион не найден. Пожалуйста, попробуйте снова.");
+                    return ctx.wizard.selectStep(2);
+                }
+
+                if (region.areas && region.areas.length > 0) {
+                    const keyboard = buildKeyboardButtons(
+                        region.areas.map(a => ({
+                            id: a.id,
+                            name: a.name
+                        })),
+                        "select_subregion_",
+                        2,
+                        [{text: "🌍 Все регионы", data: "ALL"}]
+                    );
+
+                    await ctx.reply(
+                        `Вы выбрали: ${region.name}\n\n` +
+                        "Хотите выбрать конкретную область или искать по всем регионам?",
+                        keyboard
+                    );
+                    return ctx.wizard.next();
+                } else {
+                    await ctx.reply(`Регион "${region.name}" выбран. Теперь выберите график работы.`);
+                    return ctx.wizard.selectStep(4);
+                }
+            } catch (err) {
+                console.error("Ошибка получения областей:", err);
+                await ctx.reply("Ошибка при получении областей. Попробуйте позже.");
+                return ctx.scene.leave();
             }
-            if (page < totalPages) {
-                additionalButtons.push({text: 'Вперед ➡️', data: `profarea_page_${page + 1}`});
+        },
+
+        // Шаг 4 — выбор подрегиона и показ графиков работы
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+            if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
+                await ctx.reply("Пожалуйста, выберите область нажатием на кнопку.");
+                return;
             }
-        }
 
-        // Добавляем кнопку "Не важно"
-        additionalButtons.push({text: '❌ Не важно', data: 'ANY'});
+            const subregionId = cb.data.replace("select_subregion_", "");
+            const session = ctx.session as JobSearchSession;
 
-        const keyboard = buildKeyboardButtons(
-            areaOptions,
-            "select_profarea_",
-            2, // 2 колонки для лучшего отображения
-            additionalButtons
-        );
+            if (subregionId === "ALL") {
+                await ctx.answerCbQuery("Выбраны все регионы");
+                await ctx.reply("✅ Выбраны все регионы. Теперь выберите график работы.");
+            } else {
+                session.region = subregionId;
+                await ctx.answerCbQuery();
+                await ctx.reply("Область выбрана. Теперь выберите график работы.");
+            }
 
-        await ctx.reply(
-            `Выберите профессиональную область (стр. ${page}/${totalPages}):`,
-            keyboard
-        );
-    } catch (err) {
-        console.error("Ошибка получения профессиональных областей:", err);
-        await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
-        return ctx.scene.leave();
-    }
-}
+            try {
+                const response = await axios.get("https://api.hh.ru/dictionaries", {
+                    headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
+                });
+                const dictionaries = response.data;
+
+                // Кнопки для графика работы
+                const scheduleOptions = dictionaries.schedule.map((s: any) => ({
+                    id: s.id,
+                    name: s.name
+                }));
+
+                const keyboard = buildKeyboardButtons(scheduleOptions, "select_schedule_", 2, [
+                    {text: "❌ Не важно", data: "ANY"}
+                ]);
+
+                await ctx.reply("Выберите желаемый график работы:", keyboard);
+            } catch (err) {
+                console.error("Ошибка получения графиков работы:", err);
+                await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
+                return ctx.scene.leave();
+            }
+
+            return ctx.wizard.next();
+        },
+
+// Шаг 5 — выбор графика работы и показ кнопок типа занятости
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_schedule_")) {
+                await ctx.reply("Пожалуйста, выберите график работы нажатием на кнопку.");
+                return;
+            }
+
+            const scheduleId = cb.data.replace("select_schedule_", "");
+            const session = ctx.session as JobSearchSession;
+            session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                scheduleId === "ANY"
+                    ? "✅ График работы: не важно. Теперь выберите тип занятости."
+                    : "✅ График выбран. Теперь выберите тип занятости."
+            );
+
+            // Показ кнопок типа занятости сразу после выбора графика
+            try {
+                const response = await axios.get("https://api.hh.ru/dictionaries", {
+                    headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
+                });
+                const dictionaries = response.data;
+
+                const employmentOptions = dictionaries.employment.map((e: any) => ({
+                    id: e.id,
+                    name: e.name
+                }));
+
+                const keyboard = buildKeyboardButtons(employmentOptions, "select_employment_", 2, [
+                    {text: "❌ Не важно", data: "ANY"}
+                ]);
+
+                await ctx.reply("Выберите тип занятости:", keyboard);
+            } catch (err) {
+                console.error("Ошибка получения типов занятости:", err);
+                await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
+                return ctx.scene.leave();
+            }
+
+            return ctx.wizard.next();
+        },
+
+        // Шаг 6 — выбор типа занятости
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+
+            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
+                await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
+                return;
+            }
+
+            const employmentId = cb.data.replace("select_employment_", "");
+            const session = ctx.session as JobSearchSession;
+            session.employmentType = employmentId === "ANY" ? undefined : employmentId;
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                employmentId === "ANY"
+                    ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                    : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
+            );
+
+            return ctx.wizard.next();
+        },
+
+// Шаг 7 — выбор профессиональной области (упрощенная версия)
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
+                await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
+                return;
+            }
+
+            const employmentId = cb.data.replace("select_employment_", "");
+            const session = ctx.session as JobSearchSession;
+            session.employmentType = employmentId === "ANY" ? undefined : employmentId;
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                employmentId === "ANY"
+                    ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                    : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
+            );
+
+            // Показываем только первые 10 профессиональных областей
+            try {
+                const profRes = await axios.get("https://api.hh.ru/professional_roles", {
+                    headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
+                });
+
+                const categories = profRes.data.categories || [];
+                const allRoles = [];
+
+                // Собираем все роли из всех категорий
+                for (const category of categories) {
+                    if (category.roles && Array.isArray(category.roles)) {
+                        allRoles.push(...category.roles);
+                    }
+                }
+
+                // Берем только первые 10 ролей
+                const limitedRoles = allRoles.slice(0, 10);
+
+                const areaOptions = limitedRoles.map((role: any) => ({
+                    id: role.id,
+                    name: role.name.length > 20 ? role.name.substring(0, 20) + '...' : role.name
+                }));
+
+                const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 2, [
+                    {text: "❌ Не важно", data: "ANY"}
+                ]);
+
+                await ctx.reply("Выберите профессиональную область:", keyboard);
+            } catch (err) {
+                console.error("Ошибка получения профессиональных областей:", err);
+                await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
+                return ctx.scene.leave();
+            }
+
+            return ctx.wizard.next();
+        },
 
 // Шаг 8 — ключевые слова
-async (ctx) => {
-    if (!ctx.message || !("text" in ctx.message)) {
-        await ctx.reply("Пожалуйста, введите ключевые слова.");
-        return;
-    }
-
-    const session = ctx.session as JobSearchSession;
-    session.keywords = ctx.message.text.trim();
-
-    await ctx.reply("Введите сопроводительное письмо (или отправьте '-' чтобы пропустить):");
-    return ctx.wizard.next();
-},
-
-    // Шаг 9 — сопроводительное письмо и поиск
-    async (ctx) => {
-        if (!ctx.message || !("text" in ctx.message)) {
-            await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
-            return;
-        }
-
-        const session = ctx.session as JobSearchSession;
-        const coverLetter = ctx.message.text.trim();
-        session.coverLetter = coverLetter === '-' ? undefined : coverLetter;
-
-        try {
-            const telegramId = ctx.from?.id;
-            const payload = {
-                telegramId,
-                resumeId: session.selectedResumeId,
-                region: session.region,
-                workSchedule: session.workSchedule,
-                employmentType: session.employmentType,
-                professionalArea: session.professionalArea,
-                keywords: session.keywords,
-                coverLetter: session.coverLetter,
-            };
-
-            await ctx.reply("🔍 Ищем подходящие вакансии...");
-            const vacancies = await searchVacancies(payload);
-
-            if (!vacancies.length) {
-                await ctx.reply("😔 К сожалению, по вашим критериям вакансий не найдено.");
-            } else {
-                await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
-
-                for (const v of vacancies.slice(0, 10)) {
-                    try {
-                        // Добавляем информацию о графике работы и типе занятости в вывод
-                        const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
-                        const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
-
-                        await ctx.replyWithMarkdown(
-                            `*${v.name}*\n` +
-                            `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
-                            `💰 Зарплата: ${formatSalary(v.salary)}` +
-                            scheduleInfo +
-                            employmentInfo +
-                            `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
-                            `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
-                            Markup.inlineKeyboard([
-                                Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
-                            ])
-                        );
-                    } catch (e) {
-                        console.error("Ошибка отправки вакансии:", e);
-                        await ctx.reply("Не удалось отправить информацию о вакансии");
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                }
+        async (ctx) => {
+            if (!ctx.message || !("text" in ctx.message)) {
+                await ctx.reply("Пожалуйста, введите ключевые слова.");
+                return;
             }
-        } catch (e) {
-            console.error("Ошибка поиска:", e);
-            await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
-        }
 
-        return ctx.scene.leave();
-    }
-)
+            const session = ctx.session as JobSearchSession;
+            session.keywords = ctx.message.text.trim();
+
+            await ctx.reply("Введите сопроводительное письмо (или отправьте '-' чтобы пропустить):");
+            return ctx.wizard.next();
+        },
+
+        // Шаг 9 — сопроводительное письмо и поиск
+        async (ctx) => {
+            if (!ctx.message || !("text" in ctx.message)) {
+                await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
+                return;
+            }
+
+            const session = ctx.session as JobSearchSession;
+            const coverLetter = ctx.message.text.trim();
+            session.coverLetter = coverLetter === '-' ? undefined : coverLetter;
+
+            try {
+                const telegramId = ctx.from?.id;
+                const payload = {
+                    telegramId,
+                    resumeId: session.selectedResumeId,
+                    region: session.region,
+                    workSchedule: session.workSchedule,
+                    employmentType: session.employmentType,
+                    professionalArea: session.professionalArea,
+                    keywords: session.keywords,
+                    coverLetter: session.coverLetter,
+                };
+
+                await ctx.reply("🔍 Ищем подходящие вакансии...");
+                const vacancies = await searchVacancies(payload);
+
+                if (!vacancies.length) {
+                    await ctx.reply("😔 К сожалению, по вашим критериям вакансий не найдено.");
+                } else {
+                    await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
+
+                    for (const v of vacancies.slice(0, 10)) {
+                        try {
+                            // Добавляем информацию о графике работы и типе занятости в вывод
+                            const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
+                            const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
+
+                            await ctx.replyWithMarkdown(
+                                `*${v.name}*\n` +
+                                `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
+                                `💰 Зарплата: ${formatSalary(v.salary)}` +
+                                scheduleInfo +
+                                employmentInfo +
+                                `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
+                                `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
+                                Markup.inlineKeyboard([
+                                    Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
+                                ])
+                            );
+                        } catch (e) {
+                            console.error("Ошибка отправки вакансии:", e);
+                            await ctx.reply("Не удалось отправить информацию о вакансии");
+                        }
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                    }
+                }
+            } catch (e) {
+                console.error("Ошибка поиска:", e);
+                await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
+            }
+
+            return ctx.scene.leave();
+        }
+    )
 ;
