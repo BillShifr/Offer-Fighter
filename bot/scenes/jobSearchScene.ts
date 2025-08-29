@@ -248,61 +248,48 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
 // Шаг 7 — выбор профессиональной области
     async (ctx) => {
-        const session = ctx.session as JobSearchSession;
-
-        // Обработка выбора проф. области через callback
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
-            const cb = ctx.callbackQuery;
-
-            if (cb.data.startsWith("select_profarea_")) {
-                const profAreaId = cb.data.replace("select_profarea_", "");
-                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
-
-                await ctx.answerCbQuery();
-                await ctx.reply(
-                    profAreaId === "ANY"
-                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
-                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
-                );
-
-                return ctx.wizard.next();
-            }
-
-            await ctx.answerCbQuery();
+        const cb = ctx.callbackQuery;
+        if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
+            await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
             return;
         }
 
-        // Если нет callback — показываем кнопки
+        const employmentId = cb.data.replace("select_employment_", "");
+        const session = ctx.session as JobSearchSession;
+        session.employmentType = employmentId === "ANY" ? undefined : employmentId;
+
+        await ctx.answerCbQuery();
+        await ctx.reply(
+            employmentId === "ANY"
+                ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
+        );
+
+        // Показываем кнопки для профессиональной области сразу
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                 headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
             });
 
-            const categories = Array.isArray(profRes.data?.categories) ? profRes.data.categories : [];
-            const allRoles: any[] = [];
+            // Исправляем обработку ответа API
+            const categories = profRes.data.categories || [];
+            const allRoles = [];
 
+            // Собираем все роли из всех категорий
             for (const category of categories) {
-                if (Array.isArray(category.roles)) {
+                if (category.roles && Array.isArray(category.roles)) {
                     allRoles.push(...category.roles);
                 }
             }
 
-            if (!allRoles.length) {
-                await ctx.reply("Профессиональные области не найдены.");
-                return ctx.scene.leave();
-            }
-
-            const areaOptions = allRoles.map(role => ({
+            const areaOptions = allRoles.map((role: any) => ({
                 id: role.id,
                 name: role.name
             }));
 
-            const keyboard = buildKeyboardButtons(
-                areaOptions,
-                "select_profarea_",
-                1,
-                [{text: "❌ Не важно", data: "ANY"}]
-            );
+            const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 1, [
+                {text: "❌ Не важно", data: "ANY"}
+            ]);
 
             await ctx.reply("Выберите профессиональную область:", keyboard);
         } catch (err) {
@@ -310,6 +297,8 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
             return ctx.scene.leave();
         }
+
+        return ctx.wizard.next();
     },
 
 
