@@ -268,7 +268,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-
 // Шаг 7 — выбор профессиональной области
     async (ctx) => {
         // Обрабатываем callback от выбора проф. области
@@ -289,11 +288,12 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 return ctx.wizard.next();
             }
 
+            // Если callback не от проф. области, просто отвечаем и остаемся на этом шаге
             await ctx.answerCbQuery();
             return;
         }
 
-        // Если нет callback, показываем кнопки
+        // Если нет callback (первый вход на шаг), показываем кнопки
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                 headers: {
@@ -301,23 +301,17 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 }
             });
 
-            const categories = Array.isArray(profRes.data.categories) ? profRes.data.categories : [];
+            // Извлекаем все роли из всех категорий
+            const categories = profRes.data.categories || [];
+            const allRoles = [];
 
-            // Собираем все роли из всех категорий
-            let profRoles: any[] = [];
-            categories.forEach(cat => {
-                if (Array.isArray(cat.roles)) {
-                    profRoles = profRoles.concat(cat.roles);
+            for (const category of categories) {
+                if (category.roles && Array.isArray(category.roles)) {
+                    allRoles.push(...category.roles);
                 }
-            });
-
-            if (!Array.isArray(profRoles) || profRoles.length === 0) {
-                console.error("profRoles не массив или пустой:", profRes.data);
-                await ctx.reply("Профессиональные области не найдены.");
-                return ctx.scene.leave();
             }
 
-            const areaOptions = profRoles.map(role => ({
+            const areaOptions = allRoles.map((role: any) => ({
                 id: role.id,
                 name: role.name
             }));
