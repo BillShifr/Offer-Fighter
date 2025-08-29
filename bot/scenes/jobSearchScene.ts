@@ -246,74 +246,121 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-// Шаг 7 — выбор профессиональной области
+// Шаг 7 — выбор профессиональной области (с пагинацией)
     async (ctx) => {
-        const cb = ctx.callbackQuery;
-        if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
-            await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
-            return;
-        }
+        // Обрабатываем callback от выбора проф. области
+        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
+            const cb = ctx.callbackQuery;
 
-        const employmentId = cb.data.replace("select_employment_", "");
-        const session = ctx.session as JobSearchSession;
-        session.employmentType = employmentId === "ANY" ? undefined : employmentId;
+            if (cb.data.startsWith("select_profarea_")) {
+                const profAreaId = cb.data.replace("select_profarea_", "");
+                const session = ctx.session as JobSearchSession;
+                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
 
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            employmentId === "ANY"
-                ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
-                : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
-        );
-
-        // Показываем кнопки для профессиональной области сразу
-        try {
-            const profRes = await axios.get("https://api.hh.ru/professional_roles", {
-                headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
-            });
-
-            // Исправляем обработку ответа API
-            const categories = profRes.data.categories || [];
-            const allRoles = [];
-
-            // Собираем все роли из всех категорий
-            for (const category of categories) {
-                if (category.roles && Array.isArray(category.roles)) {
-                    allRoles.push(...category.roles);
-                }
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    profAreaId === "ANY"
+                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
+                );
+                return ctx.wizard.next();
+            } else if (cb.data.startsWith("profarea_page_")) {
+                // Обработка пагинации
+                const pageNum = parseInt(cb.data.replace("profarea_page_", ""));
+                await ctx.answerCbQuery();
+                await showProfessionalAreas(ctx, pageNum);
+                return;
             }
 
-            const areaOptions = allRoles.map((role: any) => ({
-                id: role.id,
-                name: role.name
-            }));
-
-            const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 1, [
-                {text: "❌ Не важно", data: "ANY"}
-            ]);
-
-            await ctx.reply("Выберите профессиональную область:", keyboard);
-        } catch (err) {
-            console.error("Ошибка получения профессиональных областей:", err);
-            await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-
-        return ctx.wizard.next();
-    },
-
-    // Шаг 8 — ключевые слова
-    async (ctx) => {
-        if (!ctx.message || !("text" in ctx.message)) {
-            await ctx.reply("Пожалуйста, введите ключевые слова.");
+            await ctx.answerCbQuery();
             return;
         }
 
-        const session = ctx.session as JobSearchSession;
-        session.keywords = ctx.message.text.trim();
+        // Если нет callback, показываем первую страницу
+        await showProfessionalAreas(ctx, 1);
+    }
 
-        await ctx.reply("Введите сопроводительное письмо (или отправьте '-' чтобы пропустить):");
-        return ctx.wizard.next();
-    },
+// Функция для отображения профессиональных областей с пагинацией
+async function showProfessionalAreas(ctx: JobSearchContext, page: number) {
+    try {
+        const profRes = await axios.get("https://api.hh.ru/professional_roles", {
+            headers: {
+                'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+            }
+        });
+
+        const categories = profRes.data.categories || [];
+        let allRoles: any[] = [];
+
+        categories.forEach(cat => {
+            if (cat.roles && Array.isArray(cat.roles)) {
+                allRoles = allRoles.concat(cat.roles);
+            }
+        });
+
+        // Ограничиваем количество до 50 для демонстрации
+        const limitedRoles = allRoles.slice(0, 50);
+
+        // Пагинация: 10 элементов на страницу
+        const itemsPerPage = 10;
+        const totalPages = Math.ceil(limitedRoles.length / itemsPerPage);
+        const startIndex = (page - 1) * itemsPerPage;
+        const endIndex = Math.min(startIndex + itemsPerPage, limitedRoles.length);
+
+        const pageRoles = limitedRoles.slice(startIndex, endIndex);
+
+        const areaOptions = pageRoles.map(role => ({
+            id: role.id,
+            name: role.name.length > 20 ? role.name.substring(0, 20) + '...' : role.name
+        }));
+
+        // Создаем дополнительные кнопки для пагинации
+        const additionalButtons = [];
+
+        // Добавляем кнопки пагинации
+        if (totalPages > 1) {
+            if (page > 1) {
+                additionalButtons.push({text: '⬅️ Назад', data: `profarea_page_${page - 1}`});
+            }
+            if (page < totalPages) {
+                additionalButtons.push({text: 'Вперед ➡️', data: `profarea_page_${page + 1}`});
+            }
+        }
+
+        // Добавляем кнопку "Не важно"
+        additionalButtons.push({text: '❌ Не важно', data: 'ANY'});
+
+        const keyboard = buildKeyboardButtons(
+            areaOptions,
+            "select_profarea_",
+            2, // 2 колонки для лучшего отображения
+            additionalButtons
+        );
+
+        await ctx.reply(
+            `Выберите профессиональную область (стр. ${page}/${totalPages}):`,
+            keyboard
+        );
+    } catch (err) {
+        console.error("Ошибка получения профессиональных областей:", err);
+        await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
+        return ctx.scene.leave();
+    }
+}
+
+// Шаг 8 — ключевые слова
+async (ctx) => {
+    if (!ctx.message || !("text" in ctx.message)) {
+        await ctx.reply("Пожалуйста, введите ключевые слова.");
+        return;
+    }
+
+    const session = ctx.session as JobSearchSession;
+    session.keywords = ctx.message.text.trim();
+
+    await ctx.reply("Введите сопроводительное письмо (или отправьте '-' чтобы пропустить):");
+    return ctx.wizard.next();
+},
 
     // Шаг 9 — сопроводительное письмо и поиск
     async (ctx) => {
@@ -379,4 +426,5 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         return ctx.scene.leave();
     }
-);
+)
+;
