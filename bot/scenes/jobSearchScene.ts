@@ -289,12 +289,11 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 return ctx.wizard.next();
             }
 
-            // Если callback не от проф. области, просто отвечаем и остаемся на этом шаге
             await ctx.answerCbQuery();
             return;
         }
 
-        // Если нет callback (первый вход на шаг), показываем кнопки
+        // Если нет callback, показываем кнопки
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                 headers: {
@@ -305,17 +304,23 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             const categories = Array.isArray(profRes.data.categories) ? profRes.data.categories : [];
 
             // Собираем все роли из всех категорий
-            const profRoles = categories.flatMap(cat => Array.isArray(cat.roles) ? cat.roles : []);
+            let profRoles: any[] = [];
+            categories.forEach(cat => {
+                if (Array.isArray(cat.roles)) {
+                    profRoles = profRoles.concat(cat.roles);
+                }
+            });
+
+            if (!Array.isArray(profRoles) || profRoles.length === 0) {
+                console.error("profRoles не массив или пустой:", profRes.data);
+                await ctx.reply("Профессиональные области не найдены.");
+                return ctx.scene.leave();
+            }
 
             const areaOptions = profRoles.map(role => ({
                 id: role.id,
                 name: role.name
             }));
-
-            if (areaOptions.length === 0) {
-                await ctx.reply("Профессиональные области не найдены.");
-                return ctx.scene.leave();
-            }
 
             const keyboard = buildKeyboardButtons(
                 areaOptions,
@@ -331,6 +336,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.scene.leave();
         }
     },
+
 
     // Шаг 8 — ключевые слова
     async (ctx) => {
