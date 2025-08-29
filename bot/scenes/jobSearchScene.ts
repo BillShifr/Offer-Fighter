@@ -245,25 +245,13 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
             return ctx.wizard.next();
         },
-
-// Шаг 7 — выбор профессиональной области (упрощенная версия)
+// Шаг 7 — показ кнопок профессиональной области
         async (ctx) => {
-            const cb = ctx.callbackQuery;
-            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
-                await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
-                return;
+            // Если есть callbackQuery, это значит пользователь нажал на кнопку из предыдущего шага
+            // Но нам нужно показать кнопки профессиональных областей, а не обрабатывать callback
+            if (ctx.callbackQuery) {
+                await ctx.answerCbQuery(); // Просто отвечаем на callback
             }
-
-            const employmentId = cb.data.replace("select_employment_", "");
-            const session = ctx.session as JobSearchSession;
-            session.employmentType = employmentId === "ANY" ? undefined : employmentId;
-
-            await ctx.answerCbQuery();
-            await ctx.reply(
-                employmentId === "ANY"
-                    ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
-                    : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
-            );
 
             // Показываем только первые 10 профессиональных областей
             try {
@@ -300,10 +288,33 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 return ctx.scene.leave();
             }
 
+            // Остаемся на этом шаге для обработки выбора профессиональной области
+            return;
+        },
+
+// Шаг 8 — обработка выбора профессиональной области
+        async (ctx) => {
+            const cb = ctx.callbackQuery;
+            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_profarea_")) {
+                await ctx.reply("Пожалуйста, выберите профессиональную область нажатием на кнопку.");
+                return;
+            }
+
+            const profAreaId = cb.data.replace("select_profarea_", "");
+            const session = ctx.session as JobSearchSession;
+            session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
+
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                profAreaId === "ANY"
+                    ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                    : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
+            );
+
             return ctx.wizard.next();
         },
 
-// Шаг 8 — ключевые слова
+// Шаг 9 — ключевые слова
         async (ctx) => {
             if (!ctx.message || !("text" in ctx.message)) {
                 await ctx.reply("Пожалуйста, введите ключевые слова.");
@@ -317,7 +328,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.wizard.next();
         },
 
-        // Шаг 9 — сопроводительное письмо и поиск
+// Шаг 10 — сопроводительное письмо и поиск
         async (ctx) => {
             if (!ctx.message || !("text" in ctx.message)) {
                 await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
