@@ -155,9 +155,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         // Показать графики работы сразу
         try {
-            const response = await axios.get("https://api.hh.ru/schedules", {
-                headers: { 'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)' }
-            });
+            const response = await axios.get("https://api.hh.ru/vacancies/schedules");
 
             const schedules = response.data;
 
