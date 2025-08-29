@@ -223,9 +223,10 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-// Шаг 6 — обработка выбора типа занятости
+    // Шаг 6 — выбор типа занятости
     async (ctx) => {
         const cb = ctx.callbackQuery;
+
         if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
             await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
             return;
@@ -242,41 +243,19 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
         );
 
-        // Показываем кнопки для профессиональной области сразу
-        try {
-            const profRes = await axios.get("https://api.hh.ru/professional_roles", {
-                headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
-            });
-            const profRoles = profRes.data || [];
-
-            const areaOptions = profRoles.map((role: any) => ({
-                id: role.id,
-                name: role.name
-            }));
-
-            const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 1, [
-                {text: "❌ Не важно", data: "ANY"}
-            ]);
-
-            await ctx.reply("Выберите профессиональную область:", keyboard);
-        } catch (err) {
-            console.error("Ошибка получения профессиональных областей:", err);
-            await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-
         return ctx.wizard.next();
     },
 
 // Шаг 7 — выбор профессиональной области
     async (ctx) => {
-        // Обрабатываем callback от выбора проф. области
+        const session = ctx.session as JobSearchSession;
+
+        // Обработка выбора проф. области через callback
         if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
             const cb = ctx.callbackQuery;
 
             if (cb.data.startsWith("select_profarea_")) {
                 const profAreaId = cb.data.replace("select_profarea_", "");
-                const session = ctx.session as JobSearchSession;
                 session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
 
                 await ctx.answerCbQuery();
@@ -285,33 +264,35 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                         ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
                         : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
                 );
+
                 return ctx.wizard.next();
             }
 
-            // Если callback не от проф. области, просто отвечаем и остаемся на этом шаге
             await ctx.answerCbQuery();
             return;
         }
 
-        // Если нет callback (первый вход на шаг), показываем кнопки
+        // Если нет callback — показываем кнопки
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_roles", {
-                headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
-                }
+                headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
             });
 
-            // Извлекаем все роли из всех категорий
-            const categories = profRes.data.categories || [];
-            const allRoles = [];
+            const categories = Array.isArray(profRes.data?.categories) ? profRes.data.categories : [];
+            const allRoles: any[] = [];
 
             for (const category of categories) {
-                if (category.roles && Array.isArray(category.roles)) {
+                if (Array.isArray(category.roles)) {
                     allRoles.push(...category.roles);
                 }
             }
 
-            const areaOptions = allRoles.map((role: any) => ({
+            if (!allRoles.length) {
+                await ctx.reply("Профессиональные области не найдены.");
+                return ctx.scene.leave();
+            }
+
+            const areaOptions = allRoles.map(role => ({
                 id: role.id,
                 name: role.name
             }));
