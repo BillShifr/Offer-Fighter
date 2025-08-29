@@ -155,7 +155,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 5 — выбор графика работы
+// Шаг 5 — выбор графика работы
     async (ctx) => {
         // Обрабатываем callback от выбора графика
         if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
@@ -187,11 +187,20 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
+
             const schedules = response.data;
 
-            console.log("Получены графики работы от HH API:", schedules);
+            // === Отправка raw data пользователю для дебага ===
+            const jsonStr = JSON.stringify(schedules, null, 2);
+            if (jsonStr.length <= 4000) {
+                await ctx.reply("DEBUG: Получены графики работы от HH API:\n" + jsonStr);
+            } else {
+                for (let i = 0; i < jsonStr.length; i += 4000) {
+                    await ctx.reply("DEBUG PART:\n" + jsonStr.slice(i, i + 4000));
+                }
+            }
 
-            // Преобразуем графики в правильный формат
+            // Преобразуем графики в правильный формат для кнопок
             const scheduleOptions = schedules.map((schedule: any) => ({
                 id: schedule.id,
                 name: schedule.name || `График: ${schedule.id}`
