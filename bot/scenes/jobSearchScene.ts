@@ -132,7 +132,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-    // Шаг 4 — выбор подрегиона и получение графиков работы
+// Шаг 4 — выбор подрегиона и получение ГРАФИКОВ РАБОТЫ (employment)
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
@@ -155,22 +155,20 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         try {
             // Получаем все справочники из HH API
             const response = await axios.get("https://api.hh.ru/dictionaries", {
-                headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
-                }
+                headers: {"HH-User-Agent": "HH-Bot/1.0 (your-email@example.com)"},
             });
 
             const dictionaries = response.data;
 
-            // Используем графики работы из словаря
-            const scheduleOptions = dictionaries.schedule.map((schedule: any) => ({
-                id: schedule.id,
-                name: schedule.name
+            // !!! ГРАФИКИ РАБОТЫ — из employment
+            const employmentOptions = dictionaries.employment.map((e: any) => ({
+                id: e.id,
+                name: e.name,
             }));
 
             const keyboard = buildKeyboardButtons(
-                scheduleOptions,
-                "select_schedule_",
+                employmentOptions,
+                "select_employment_",
                 2,
                 [{text: "❌ Не важно", data: "ANY"}]
             );
@@ -185,7 +183,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 5 — обработка выбранного графика работы
+// Шаг 5 — обработка выбранного ГРАФИКА РАБОТЫ
     async (ctx) => {
         if (!ctx.callbackQuery || !hasCallbackData(ctx.callbackQuery)) {
             await ctx.reply("Пожалуйста, выберите график работы нажатием на кнопку.");
@@ -194,14 +192,14 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         const cb = ctx.callbackQuery;
 
-        if (cb.data.startsWith("select_schedule_")) {
-            const scheduleId = cb.data.replace("select_schedule_", "");
+        if (cb.data.startsWith("select_employment_")) {
+            const employmentId = cb.data.replace("select_employment_", "");
             const session = ctx.session as JobSearchSession;
-            session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
+            session.workSchedule = employmentId === "ANY" ? undefined : employmentId;
 
             await ctx.answerCbQuery();
             await ctx.reply(
-                scheduleId === "ANY"
+                employmentId === "ANY"
                     ? "✅ График работы: не важно. Теперь выберите тип занятости."
                     : "✅ График выбран. Теперь выберите тип занятости."
             );
@@ -213,65 +211,58 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-// Шаг 6 — выбор типа занятости (ИСПРАВЛЕННЫЙ)
+// Шаг 6 — выбор ТИПА ЗАНЯТОСТИ (schedule)
     async (ctx) => {
-        // Обрабатываем callback от выбора типа занятости
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
-            const cb = ctx.callbackQuery;
+        const cb = ctx.callbackQuery;
 
-            if (cb.data.startsWith("select_employment_")) {
-                const employmentId = cb.data.replace("select_employment_", "");
-                const session = ctx.session as JobSearchSession;
-                session.employmentType = employmentId === "ANY" ? undefined : employmentId;
-
-                await ctx.answerCbQuery();
-                await ctx.reply(
-                    employmentId === "ANY"
-                        ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
-                        : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
-                );
-                return ctx.wizard.next();
-            }
+        // Если это callback для типа занятости — обрабатываем
+        if (cb && hasCallbackData(cb) && cb.data.startsWith("select_schedule_")) {
+            const scheduleId = cb.data.replace("select_schedule_", "");
+            const session = ctx.session as JobSearchSession;
+            session.employmentType = scheduleId === "ANY" ? undefined : scheduleId;
 
             await ctx.answerCbQuery();
-            return;
+            await ctx.reply(
+                scheduleId === "ANY"
+                    ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                    : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
+            );
+            return ctx.wizard.next();
         }
 
-        // Если это переход с предыдущего шага (без callbackQuery), показываем кнопки
+        if (cb) {
+            try {
+                await ctx.answerCbQuery();
+            } catch (e) {
+            }
+        }
+
+        // !!! ТИПЫ ЗАНЯТОСТИ — из schedule
         try {
-            // Получаем все справочники из HH API
             const response = await axios.get("https://api.hh.ru/dictionaries", {
-                headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
-                }
+                headers: {"HH-User-Agent": "HH-Bot/1.0 (your-email@example.com)"},
             });
 
             const dictionaries = response.data;
+            const scheduleDict = dictionaries.schedule || [];
 
-            // Используем типы занятости из словаря
-            const employmentOptions = dictionaries.employment.map((employment: any) => ({
-                id: employment.id,
-                name: employment.name
+            const scheduleOptions = scheduleDict.map((s: any) => ({
+                id: s.id,
+                name: s.name,
             }));
 
-            const keyboard = buildKeyboardButtons(
-                employmentOptions,
-                "select_employment_",
-                2,
-                [{text: "❌ Не важно", data: "ANY"}]
-            );
+            const keyboard = buildKeyboardButtons(scheduleOptions, "select_schedule_", 2, [
+                {text: "❌ Не важно", data: "ANY"},
+            ]);
 
             await ctx.reply("Выберите тип занятости:", keyboard);
-
-            // ВАЖНО: Добавьте return чтобы остаться на этом шаге
-            return;
-
         } catch (err) {
             console.error("Ошибка получения типов занятости:", err);
             await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
             return ctx.scene.leave();
         }
     },
+
 
     // Шаг 7 — выбор профессиональной области
     async (ctx) => {
