@@ -42,3 +42,7 @@ export async function getHHRegions(): Promise<HHRegion[]> {
         return [];
     }
 }
+
+export function hasCallbackData(q: any): q is { data: string } {
+    return q && typeof q === "object" && "data" in q && typeof q.data === "string";
+}
