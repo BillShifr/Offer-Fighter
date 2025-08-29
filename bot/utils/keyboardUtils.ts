@@ -10,20 +10,16 @@ export function buildKeyboardButtons(
     columns = 2,
     additionalButtons: { text: string; data: string }[] = []
 ) {
-    // Создаем основные кнопки
-    const buttons = items.map(item =>
-        Markup.button.callback(
-            item.name || `График: ${item.id}`,
-            `${cbPrefix}${item.id}`
-        )
-    );
+    const buttons = items.map(item => {
+        const text = typeof item.name === "string" ? item.name : String(item.id);
+        const data = typeof item.id === "string" || typeof item.id === "number" ? item.id : text;
+        return Markup.button.callback(text, `${cbPrefix}${data}`);
+    });
 
-    // Добавляем дополнительные кнопки
     additionalButtons.forEach(btn => {
         buttons.push(Markup.button.callback(btn.text, `${cbPrefix}${btn.data}`));
     });
 
-    // Группируем кнопки по колонкам
     const rows = [];
     for (let i = 0; i < buttons.length; i += columns) {
         rows.push(buttons.slice(i, i + columns));

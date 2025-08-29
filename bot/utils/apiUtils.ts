@@ -1,5 +1,5 @@
 import axios from "axios";
-import { HHRegion } from "../types";
+import {HHRegion} from "../types";
 
 // функция для безопасного получения BACKEND_URL
 function getBackendUrl(): string {
@@ -11,11 +11,25 @@ function getBackendUrl(): string {
 // Получение резюме пользователя
 export async function getUserResumes(telegramId: number) {
     try {
-        const res = await axios.get(`${getBackendUrl()}/user/${telegramId}/resumes`);
-        return res.data.items || res.data || [];
+        const BACKEND_URL = process.env.BACKEND_URL;
+        if (!BACKEND_URL) {
+            throw new Error("BACKEND_URL не задан в .env");
+        }
+
+        console.log("Запрос резюме для Telegram ID:", telegramId);
+        const res = await axios.get(`${BACKEND_URL}/user/${telegramId}/resumes`);
+
+        // Добавляем отладочную информацию
+        console.log("Данные резюме от API:", JSON.stringify(res.data, null, 2));
+
+        // HH API возвращает объект с полем items или массив напрямую
+        const resumes = res.data.items || res.data || [];
+        console.log("Обработанные резюме:", resumes);
+
+        return resumes;
     } catch (err) {
         console.error("Ошибка получения резюме:", err);
-        return [];
+        throw new Error("Не удалось получить резюме");
     }
 }
 

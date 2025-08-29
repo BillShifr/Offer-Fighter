@@ -3,36 +3,11 @@ import axios from "axios";
 import {HHRegion, JobSearchContext, JobSearchSession} from "../types";
 import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils.ts";
 import {formatSalary} from "../utils/salaryUtils.ts";
-import {getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
+import {searchVacancies} from "../utils/apiUtils.ts";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     "job-search-wizard",
 
-    // Шаг 1 — получить резюме
-    async (ctx) => {
-        const telegramId = ctx.from?.id;
-        if (!telegramId) {
-            await ctx.reply("Не удалось определить ваш Telegram ID.");
-            return ctx.scene.leave();
-        }
-
-        try {
-            const resumes = await getUserResumes(telegramId);
-
-            if (!Array.isArray(resumes) || !resumes.length) {
-                await ctx.reply("Резюме не найдено. Пожалуйста, авторизуйтесь через /start.");
-                return ctx.scene.leave();
-            }
-
-            const keyboard = buildKeyboardButtons(resumes, "select_resume_");
-            await ctx.reply("Выберите резюме:", keyboard);
-            return ctx.wizard.next();
-        } catch (err) {
-            console.error("Ошибка получения резюме:", err);
-            await ctx.reply("Ошибка при получении резюме. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-    },
 
     // Шаг 2 — выбор резюме
     async (ctx) => {
@@ -177,13 +152,19 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             const response = await axios.get("https://api.hh.ru/schedules");
             const schedules = response.data;
 
-            console.log("Получены графики работы:", schedules); // Для отладки
+            console.log("Получены графики работы от HH API:", schedules);
+
+            // Преобразуем графики в правильный формат
+            const scheduleOptions = schedules.map((schedule: any) => ({
+                id: schedule.id,
+                name: schedule.name || `График: ${schedule.id}`
+            }));
 
             const keyboard = buildKeyboardButtons(
-                schedules,
+                scheduleOptions,
                 "select_schedule_",
                 2,
-                [{ text: "❌ Не важно", data: "ANY" }]
+                [{text: "❌ Не важно", data: "ANY"}]
             );
 
             await ctx.reply(
