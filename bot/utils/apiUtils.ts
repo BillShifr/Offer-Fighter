@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import axios from "axios";
 
 const BACKEND_URL = process.env.BACKEND_URL;
