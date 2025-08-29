@@ -42,7 +42,7 @@ const userSchema = new mongoose.Schema({
 const User = mongoose.model<any>("User", userSchema);
 
 // Проверка обязательных переменных окружения
-const requiredEnvVars = ['HH_CLIENT_ID', 'HH_CLIENT_SECRET', 'HH_REDIRECT_URI', 'BOT_TOKEN'];
+const requiredEnvVars = ['HH_CLIENT_ID', 'HH_CLIENT_SECRET', 'HH_REDIRECT_URI', 'BOT_TOKEN', 'BACKEND_URL'];
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
     console.error('Missing required environment variables:', missingVars);
@@ -102,7 +102,8 @@ app.get("/auth/callback", async (req: Request, res: Response) => {
             }),
             {
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'HH-Bot/1.0 (https://github.com/your-repo)'
                 }
             }
         );
@@ -145,19 +146,44 @@ app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
     try {
         const user = await User.findOne({ telegramId: req.params.telegramId });
         if (!user || !user.hhAccessToken) {
-            return res.status(404).json({ error: "Нет токена HH или пользователь" });
+            return res.status(401).json({ error: "Требуется авторизация" });
         }
 
+        // Добавляем заголовок User-Agent, требуемый HH API :cite[6]
         const hhRes = await axios.get("https://api.hh.ru/resumes/mine", {
-            headers: { Authorization: `Bearer ${user.hhAccessToken}` },
+            headers: {
+                Authorization: `Bearer ${user.hhAccessToken}`,
+                'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+            },
         });
 
-        // HH API возвращает объект с items
-        const resumes = hhRes.data.items || [];
-        res.json(resumes);
+        // Обрабатываем разные форматы ответа от HH API
+        let resumes = [];
+        if (Array.isArray(hhRes.data)) {
+            resumes = hhRes.data;
+        } else if (hhRes.data && Array.isArray(hhRes.data.items)) {
+            resumes = hhRes.data.items;
+        } else {
+            console.warn("Неожиданный формат ответа от HH API:", hhRes.data);
+        }
+
+        // Фильтруем только опубликованные резюме
+        const publishedResumes = resumes.filter((resume: any) =>
+            resume.status && resume.status === 'published'
+        );
+
+        res.json(publishedResumes);
     } catch (error: any) {
         console.error("Error fetching resumes:", error.response?.data || error.message);
-        res.status(500).json({ error: error.message });
+
+        // Более информативные ошибки
+        if (error.response?.status === 401) {
+            res.status(401).json({ error: "Недействительный токен доступа" });
+        } else if (error.response?.status === 403) {
+            res.status(403).json({ error: "Нет доступа к резюме" });
+        } else {
+            res.status(500).json({ error: "Ошибка получения резюме" });
+        }
     }
 });
 
@@ -214,7 +240,10 @@ app.post("/search", async (req: Request, res: Response) => {
 
         // Выполняем поиск через HH API
         const hhRes = await axios.get("https://api.hh.ru/vacancies", {
-            headers: { Authorization: `Bearer ${user.hhAccessToken}` },
+            headers: {
+                Authorization: `Bearer ${user.hhAccessToken}`,
+                'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+            },
             params
         });
 
@@ -223,6 +252,49 @@ app.post("/search", async (req: Request, res: Response) => {
     } catch (error: any) {
         console.error("Ошибка поиска:", error.response?.data || error.message);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// === Refresh token endpoint ===
+app.post("/user/:telegramId/refresh-token", async (req: Request, res: Response) => {
+    try {
+        const user = await User.findOne({ telegramId: req.params.telegramId });
+        if (!user || !user.hhRefreshToken) {
+            return res.status(404).json({ error: "Пользователь или refresh token не найден" });
+        }
+
+        const tokenResponse = await axios.post(
+            "https://hh.ru/oauth/token",
+            new URLSearchParams({
+                grant_type: "refresh_token",
+                client_id: process.env.HH_CLIENT_ID!,
+                client_secret: process.env.HH_CLIENT_SECRET!,
+                refresh_token: user.hhRefreshToken,
+            }),
+            {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'User-Agent': 'HH-Bot/1.0 (https://github.com/your-repo)'
+                }
+            }
+        );
+
+        const { access_token, refresh_token, expires_in } = tokenResponse.data;
+        const expiresAt = new Date(Date.now() + expires_in * 1000);
+
+        await User.findOneAndUpdate(
+            { telegramId: req.params.telegramId },
+            {
+                hhAccessToken: access_token,
+                hhRefreshToken: refresh_token,
+                hhExpiresAt: expiresAt,
+            }
+        );
+
+        res.json({ success: true, message: "Токен успешно обновлен" });
+    } catch (error: any) {
+        console.error("Error refreshing token:", error.response?.data || error.message);
+        res.status(500).json({ error: "Ошибка обновления токена" });
     }
 });
 
