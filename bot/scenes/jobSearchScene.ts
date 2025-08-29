@@ -132,7 +132,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-    // Шаг 4 — выбор подрегиона
+    // Шаг 4 — выбор подрегиона и получение графиков работы
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
@@ -152,23 +152,36 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply("Область выбрана. Теперь выберите график работы.");
         }
 
-        // Используем захардкоженный список графиков работы
-        const scheduleOptions = [
-            {id: "fullDay", name: "Полный день"},
-            {id: "shift", name: "Сменный график"},
-            {id: "flexible", name: "Гибкий график"},
-            {id: "remote", name: "Удаленная работа"},
-            {id: "flyInFlyOut", name: "Вахтовый метод"}
-        ];
+        try {
+            // Получаем все справочники из HH API
+            const response = await axios.get("https://api.hh.ru/dictionaries", {
+                headers: {
+                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                }
+            });
 
-        const keyboard = buildKeyboardButtons(
-            scheduleOptions,
-            "select_schedule_",
-            2,
-            [{text: "❌ Не важно", data: "ANY"}]
-        );
+            const dictionaries = response.data;
 
-        await ctx.reply("Выберите желаемый график работы:", keyboard);
+            // Используем графики работы из словаря
+            const scheduleOptions = dictionaries.schedule.map((schedule: any) => ({
+                id: schedule.id,
+                name: schedule.name
+            }));
+
+            const keyboard = buildKeyboardButtons(
+                scheduleOptions,
+                "select_schedule_",
+                2,
+                [{text: "❌ Не важно", data: "ANY"}]
+            );
+
+            await ctx.reply("Выберите желаемый график работы:", keyboard);
+        } catch (err) {
+            console.error("Ошибка получения графиков работы:", err);
+            await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
+            return ctx.scene.leave();
+        }
+
         return ctx.wizard.next();
     },
 
@@ -225,18 +238,20 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return;
         }
 
-        // Если нет callback (первый вход на шаг), показываем кнопки
+        // Получаем типы занятости из словарей HH API
         try {
-            const empRes = await axios.get("https://api.hh.ru/employments", {
+            const response = await axios.get("https://api.hh.ru/dictionaries", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
                 }
             });
-            const employments = empRes.data || [];
 
-            const employmentOptions = employments.map((e: any) => ({
-                ...e,
-                name: e.name || `Тип: ${e.id}`
+            const dictionaries = response.data;
+
+            // Используем типы занятости из словаря
+            const employmentOptions = dictionaries.employment.map((employment: any) => ({
+                id: employment.id,
+                name: employment.name
             }));
 
             const keyboard = buildKeyboardButtons(
@@ -281,20 +296,17 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         // Если нет callback (первый вход на шаг), показываем кнопки
         try {
-            const profRes = await axios.get("https://api.hh.ru/professional_areas", {
+            const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
                 }
             });
-            const profAreas = profRes.data || [];
+            const profRoles = profRes.data || [];
 
-            const areaOptions = profAreas.flatMap((group: any) =>
-                (group.categories || []).map((cat: any) => ({
-                    id: cat.id,
-                    name: cat.name,
-                    title: cat.name
-                }))
-            );
+            const areaOptions = profRoles.map((role: any) => ({
+                id: role.id,
+                name: role.name
+            }));
 
             const keyboard = buildKeyboardButtons(
                 areaOptions,
@@ -305,7 +317,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
             await ctx.reply("Выберите профессиональную область:", keyboard);
         } catch (err) {
-            console.error("Ошибка получения профобластей:", err);
+            console.error("Ошибка получения профессиональных областей:", err);
             await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
             return ctx.scene.leave();
         }
@@ -359,14 +371,16 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
                 for (const v of vacancies.slice(0, 10)) {
                     try {
-                        // Добавляем информацию о графике работы в вывод
+                        // Добавляем информацию о графике работы и типе занятости в вывод
                         const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
+                        const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
 
                         await ctx.replyWithMarkdown(
                             `*${v.name}*\n` +
                             `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
                             `💰 Зарплата: ${formatSalary(v.salary)}` +
                             scheduleInfo +
+                            employmentInfo +
                             `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
                             `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
                             Markup.inlineKeyboard([
