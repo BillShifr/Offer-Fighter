@@ -245,34 +245,47 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
             return ctx.wizard.next();
         },
-// Шаг 7 — показ кнопок профессиональной области
+
+        // Шаг 7 — выбор профессиональной области
         async (ctx) => {
-            // Если есть callbackQuery, это значит пользователь нажал на кнопку из предыдущего шага
-            // Но нам нужно показать кнопки профессиональных областей, а не обрабатывать callback
-            if (ctx.callbackQuery) {
-                await ctx.answerCbQuery(); // Просто отвечаем на callback
+            const session = ctx.session as JobSearchSession;
+
+            // Если пользователь уже нажал кнопку
+            if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery) && ctx.callbackQuery.data.startsWith("select_profarea_")) {
+                const profAreaId = ctx.callbackQuery.data.replace("select_profarea_", "");
+                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
+
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    profAreaId === "ANY"
+                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
+                );
+
+                return ctx.wizard.next();
             }
 
-            // Показываем только первые 10 профессиональных областей
+            // Если нет callback — показываем кнопки
             try {
                 const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                     headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
                 });
 
-                const categories = profRes.data.categories || [];
-                const allRoles = [];
+                const categories = Array.isArray(profRes.data?.categories) ? profRes.data.categories : [];
+                const allRoles: any[] = [];
 
-                // Собираем все роли из всех категорий
                 for (const category of categories) {
-                    if (category.roles && Array.isArray(category.roles)) {
+                    if (Array.isArray(category.roles)) {
                         allRoles.push(...category.roles);
                     }
                 }
 
-                // Берем только первые 10 ролей
-                const limitedRoles = allRoles.slice(0, 10);
+                if (!allRoles.length) {
+                    await ctx.reply("Профессиональные области не найдены.");
+                    return ctx.scene.leave();
+                }
 
-                const areaOptions = limitedRoles.map((role: any) => ({
+                const areaOptions = allRoles.slice(0, 10).map(role => ({
                     id: role.id,
                     name: role.name.length > 20 ? role.name.substring(0, 20) + '...' : role.name
                 }));
@@ -287,9 +300,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
                 return ctx.scene.leave();
             }
-
-            // Остаемся на этом шаге для обработки выбора профессиональной области
-            return;
         },
 
 // Шаг 8 — обработка выбора профессиональной области
