@@ -149,13 +149,14 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 5 — выбор графика работы
+// Шаг 5 — выбор графика работы
     async (ctx) => {
         const session = ctx.session as JobSearchSession;
+        const cb = ctx.callbackQuery;
 
-        // Если есть callbackQuery с выбором графика — обработать его
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery) && ctx.callbackQuery.data.startsWith("select_schedule_")) {
-            const scheduleId = ctx.callbackQuery.data.replace("select_schedule_", "");
+        // Пользователь выбрал график
+        if (cb && hasCallbackData(cb) && cb.data.startsWith("select_schedule_")) {
+            const scheduleId = cb.data.replace("select_schedule_", "");
             session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
             await ctx.answerCbQuery();
@@ -164,10 +165,10 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     ? "✅ График работы: не важно. Теперь выберите тип занятости."
                     : "✅ График выбран. Теперь выберите тип занятости."
             );
-            return ctx.wizard.next(); // Возвращаем, чтобы шаг завершился
+            return ctx.wizard.next();
         }
 
-        // Построение клавиатуры для первого входа на шаг
+        // Если мы сюда попали — значит это первый заход на шаг → показываем клавиатуру
         try {
             const response = await axios.get("https://api.hh.ru/schedules");
             const schedules = response.data.map((s: any) => ({
@@ -179,20 +180,16 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 schedules,
                 "select_schedule_",
                 2,
-                [{text: "❌ Не важно", data: "ANY"}]
+                [{ text: "❌ Не важно", data: "select_schedule_ANY" }]
             );
 
-            await ctx.reply(
-                "Выберите желаемый график работы:",
-                keyboard
-            );
+            await ctx.reply("Выберите желаемый график работы:", keyboard);
         } catch (err) {
             console.error("Ошибка получения графиков работы:", err);
             await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
             return ctx.scene.leave();
         }
     },
-
 
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
