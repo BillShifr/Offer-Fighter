@@ -132,7 +132,8 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-    // Шаг 4 — выбор подрегиона
+
+// Шаг 4 — выбор подрегиона
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
@@ -152,101 +153,53 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply("Область выбрана. Теперь выберите график работы.");
         }
 
-        // Исправлено: переходим к следующему шагу вместо вызова несуществующей функции
-        return ctx.wizard.next();
+        // Ручной список графиков работы
+        const scheduleOptions = [
+            { id: "full_day", name: "Полный день" },
+            { id: "shift", name: "Сменный график" },
+            { id: "flexible", name: "Гибкий график" },
+            { id: "remote", name: "Удаленная работа" },
+            { id: "rotation", name: "Вахтовый метод" }
+        ];
+
+        const keyboard = buildKeyboardButtons(
+            scheduleOptions,
+            "select_schedule_",
+            2,
+            [{ text: "❌ Не важно", data: "ANY" }]
+        );
+
+        await ctx.reply("Выберите желаемый график работы:", keyboard);
+
+        return ctx.wizard.next(); // переходим к обработке выбора графика
     },
 
-    // Шаг 5 — выбор графика работы
+// Шаг 5 — обработка выбранного графика работы
     async (ctx) => {
-        // Обрабатываем callback от выбора графика
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
-            const cb = ctx.callbackQuery;
+        if (!ctx.callbackQuery || !hasCallbackData(ctx.callbackQuery)) return;
 
-            if (cb.data.startsWith("select_schedule_")) {
-                const scheduleId = cb.data.replace("select_schedule_", "");
-                const session = ctx.session as JobSearchSession;
-                session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
+        const cb = ctx.callbackQuery;
 
-                await ctx.answerCbQuery();
-                await ctx.reply(
-                    scheduleId === "ANY"
-                        ? "✅ График работы: не важно. Теперь выберите тип занятости."
-                        : "✅ График выбран. Теперь выберите тип занятости."
-                );
-                return ctx.wizard.next();
-            }
+        if (cb.data.startsWith("select_schedule_")) {
+            const scheduleId = cb.data.replace("select_schedule_", "");
+            const session = ctx.session as JobSearchSession;
+            session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
-            // Если callback не от графика, просто отвечаем и остаемся на этом шаге
+            await ctx.answerCbQuery();
+            await ctx.reply(
+                scheduleId === "ANY"
+                    ? "✅ График работы: не важно. Теперь выберите тип занятости."
+                    : `✅ График работы выбран: ${scheduleId}. Теперь выберите тип занятости.`
+            );
+
+            return ctx.wizard.next();
+        } else {
             await ctx.answerCbQuery();
             return;
         }
-
-        // Если нет callback (первый вход на шаг), показываем кнопки
-        try {
-            const response = await axios.get("https://api.hh.ru/schedules", {
-                headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
-                }
-            });
-
-            const schedules = response.data;
-
-            // === Отправка raw data пользователю для дебага ===
-            const jsonStr = JSON.stringify(schedules, null, 2);
-
-            // Отправляем данные для отладки
-            try {
-                if (jsonStr.length <= 4000) {
-                    await ctx.reply("DEBUG: Получены графики работы от HH API:\n" + jsonStr);
-                } else {
-                    // Разбиваем длинное сообщение на части
-                    for (let i = 0; i < jsonStr.length; i += 4000) {
-                        await ctx.reply("DEBUG PART " + (i/4000 + 1) + ":\n" + jsonStr.slice(i, i + 4000));
-                        await new Promise(resolve => setTimeout(resolve, 100)); // Небольшая задержка между сообщениями
-                    }
-                }
-            } catch (debugError) {
-                console.error("Ошибка при отправке отладочной информации:", debugError);
-                await ctx.reply("Не удалось отправить отладочную информацию, но продолжаем работу...");
-            }
-
-            // Преобразуем графики в правильный формат для кнопок
-            const scheduleOptions = schedules.map((schedule: any) => ({
-                id: schedule.id,
-                name: schedule.name || `График: ${schedule.id}`
-            }));
-
-            const keyboard = buildKeyboardButtons(
-                scheduleOptions,
-                "select_schedule_",
-                2,
-                [{text: "❌ Не важно", data: "ANY"}]
-            );
-
-            await ctx.reply(
-                "Выберите желаемый график работы:",
-                keyboard
-            );
-        } catch (err) {
-            console.error("Ошибка получения графиков работы:", err);
-
-            // Отправляем информацию об ошибке пользователю
-            let errorMessage = "Ошибка при получении графиков работы: ";
-            if (err.response) {
-                errorMessage += `Статус: ${err.response.status}, Данные: ${JSON.stringify(err.response.data)}`;
-            } else if (err.request) {
-                errorMessage += "Запрос был сделан, но ответ не получен";
-            } else {
-                errorMessage += err.message;
-            }
-
-            await ctx.reply(errorMessage);
-            await ctx.reply("Попробуйте позже или обратитесь к администратору.");
-            return ctx.scene.leave();
-        }
     },
 
-    // Остальные шаги (6-9) остаются без изменений
+
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
         // Обрабатываем callback от выбора типа занятости
@@ -276,7 +229,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         try {
             const empRes = await axios.get("https://api.hh.ru/employments", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
             const employments = empRes.data || [];
@@ -330,7 +283,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_areas", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
             const profAreas = profRes.data || [];
