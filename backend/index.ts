@@ -1,5 +1,5 @@
 import express, {Request, Response} from "express";
-import mongoose, {Document} from "mongoose";
+import mongoose, {Document, Model} from "mongoose";
 import * as dotenv from "dotenv";
 import cors from "cors";
 import axios from "axios";
@@ -41,88 +41,6 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model<any>("User", userSchema);
 
-// === Проверка валидности токена ===
-const isTokenValid = (expiresAt: Date): boolean => {
-    return expiresAt && new Date(expiresAt) > new Date();
-};
-
-// === Обновление токена ===
-const refreshToken = async (refreshToken: string): Promise<{
-    access_token: string;
-    refresh_token: string;
-    expires_in: number
-} | null> => {
-    try {
-        const response = await axios.post(
-            "https://hh.ru/oauth/token",
-            new URLSearchParams({
-                grant_type: "refresh_token",
-                refresh_token: refreshToken,
-                client_id: process.env.HH_CLIENT_ID || "",
-                client_secret: process.env.HH_CLIENT_SECRET || "",
-            }),
-            {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                }
-            }
-        );
-
-        return response.data;
-    } catch (error) {
-        console.error("Token refresh error:", error);
-        return null;
-    }
-};
-
-// === Получение пользователя с валидным токеном ===
-const getUserWithValidToken = async (telegramId: string): Promise<IUser | null> => {
-    try {
-        const user = await User.findOne({telegramId});
-        if (!user || !user.hhAccessToken || !user.hhRefreshToken) return null;
-
-        // Проверяем, не истек ли токен
-        if (user.hhExpiresAt && isTokenValid(user.hhExpiresAt)) {
-            return user;
-        }
-
-        // Если токен истек, пытаемся обновить
-        const newTokenData = await refreshToken(user.hhRefreshToken);
-        if (!newTokenData) return null;
-
-        // Обновляем токен в базе
-        const expiresAt = new Date(Date.now() + newTokenData.expires_in * 1000);
-        await User.findOneAndUpdate(
-            {telegramId},
-            {
-                hhAccessToken: newTokenData.access_token,
-                hhRefreshToken: newTokenData.refresh_token,
-                hhExpiresAt: expiresAt,
-            }
-        );
-
-        return {
-            ...user.toObject(),
-            hhAccessToken: newTokenData.access_token,
-            hhRefreshToken: newTokenData.refresh_token,
-            hhExpiresAt: expiresAt,
-        } as IUser;
-    } catch (error) {
-        console.error("Error getting user with valid token:", error);
-        return null;
-    }
-};
-
-// === Проверка авторизации ===
-app.get("/user/:telegramId/auth-status", async (req: Request, res: Response) => {
-    try {
-        const user = await getUserWithValidToken(req.params.telegramId);
-        res.json({isAuthenticated: !!user});
-    } catch (e) {
-        res.status(500).json({error: (e as Error).message});
-    }
-});
-
 // === OAuth hh.ru: redirect to HH auth page ===
 app.get("/auth/hh", (req: Request, res: Response) => {
     const telegramId = req.query.telegramId;
@@ -147,17 +65,15 @@ app.get("/auth/callback", async (req: Request, res: Response) => {
 
         const tokenRes = await axios.post(
             "https://hh.ru/oauth/token",
-            new URLSearchParams({
-                grant_type: "authorization_code",
-                client_id: process.env.HH_CLIENT_ID || "",
-                client_secret: process.env.HH_CLIENT_SECRET || "",
-                redirect_uri: process.env.HH_REDIRECT_URI || "",
-                code: code as string,
-            }),
+            null,
             {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                }
+                params: {
+                    grant_type: "authorization_code",
+                    client_id: process.env.HH_CLIENT_ID,
+                    client_secret: process.env.HH_CLIENT_SECRET,
+                    redirect_uri: process.env.HH_REDIRECT_URI,
+                    code,
+                },
             }
         );
 
@@ -208,8 +124,8 @@ app.get("/user/:telegramId", async (req: Request, res: Response) => {
 // === Get resumes from HH for user ===
 app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
     try {
-        const user = await getUserWithValidToken(req.params.telegramId);
-        if (!user) return res.status(401).json({error: "Требуется авторизация"});
+        const user = await User.findOne({telegramId: req.params.telegramId});
+        if (!user || !user.hhAccessToken) return res.status(404).json({error: "Нет токена HH или пользователь"});
 
         const hhRes = await axios.get("https://api.hh.ru/resumes/mine", {
             headers: {Authorization: `Bearer ${user.hhAccessToken}`},
@@ -220,13 +136,7 @@ app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
         res.json(resumes);
     } catch (e) {
         console.error("Error fetching resumes:", (e as any).response?.data || (e as any).message);
-
-        if ((e as any).response?.status === 401) {
-            // Токен недействителен, даже после попытки обновления
-            res.status(401).json({error: "Требуется повторная авторизация"});
-        } else {
-            res.status(500).json({error: (e as Error).message});
-        }
+        res.status(500).json({error: (e as Error).message});
     }
 });
 
@@ -273,56 +183,12 @@ app.get("/user/:telegramId/subscription", async (req: Request, res: Response) =>
     }
 });
 
-// === Real search endpoint ===
+// === Simple /search endpoint (placeholder) ===
 app.post("/search", async (req: Request, res: Response) => {
     try {
-        const {
-            telegramId,
-            resumeId,
-            region,
-            workSchedule,
-            employmentType,
-            professionalArea,
-            keywords,
-            coverLetter
-        } = req.body;
-
-        // Находим пользователя с валидным токеном
-        const user = await getUserWithValidToken(telegramId);
-        if (!user) {
-            return res.status(401).json({error: "Требуется авторизация"});
-        }
-
-        // Формируем параметры запроса к HH API
-        const params: Record<string, any> = {
-            text: keywords,
-            area: region,
-            schedule: workSchedule,
-            employment: employmentType,
-            specialization: professionalArea,
-            per_page: 20
-        };
-
-        // Удаляем пустые параметры
-        Object.keys(params).forEach(key => {
-            if (params[key] === undefined || params[key] === null || params[key] === "ANY") {
-                delete params[key];
-            }
-        });
-
-        console.log("Параметры поиска:", params);
-
-        // Выполняем поиск через HH API
-        const hhRes = await axios.get("https://api.hh.ru/vacancies", {
-            headers: {Authorization: `Bearer ${user.hhAccessToken}`},
-            params
-        });
-
-        // Возвращаем результаты поиска
-        res.json(hhRes.data.items || []);
-    } catch (error: any) {
-        console.error("Ошибка поиска:", error.response?.data || error.message);
-        res.status(500).json({error: error.message});
+        res.json([]); // TODO: реализовать поиск вакансий
+    } catch (e) {
+        res.status(500).json({error: (e as Error).message});
     }
 });
 
