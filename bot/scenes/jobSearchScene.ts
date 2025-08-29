@@ -24,7 +24,13 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 return ctx.scene.leave();
             }
 
-            const keyboard = buildKeyboardButtons(resumes, "select_resume_");
+            // Преобразуем резюме для отображения
+            const resumeOptions = resumes.map(resume => ({
+                id: resume.id,
+                name: resume.title || `Резюме ${resume.id.substring(0, 8)}...`
+            }));
+
+            const keyboard = buildKeyboardButtons(resumeOptions, "select_resume_");
             await ctx.reply("Выберите резюме:", keyboard);
             return ctx.wizard.next();
         } catch (err) {
@@ -151,32 +157,48 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
     // Шаг 5 — выбор графика работы
     async (ctx) => {
-        const session = ctx.session as JobSearchSession;
+        // Обрабатываем callback от выбора графика
+        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
+            const cb = ctx.callbackQuery;
 
-        // Если есть callbackQuery с выбором графика — обработать его
-        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery) && ctx.callbackQuery.data.startsWith("select_schedule_")) {
-            const scheduleId = ctx.callbackQuery.data.replace("select_schedule_", "");
-            session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
+            if (cb.data.startsWith("select_schedule_")) {
+                const scheduleId = cb.data.replace("select_schedule_", "");
+                const session = ctx.session as JobSearchSession;
+                session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    scheduleId === "ANY"
+                        ? "✅ График работы: не важно. Теперь выберите тип занятости."
+                        : "✅ График выбран. Теперь выберите тип занятости."
+                );
+                return ctx.wizard.next();
+            }
+
+            // Если callback не от графика, просто отвечаем и остаемся на этом шаге
             await ctx.answerCbQuery();
-            await ctx.reply(
-                scheduleId === "ANY"
-                    ? "✅ График работы: не важно. Теперь выберите тип занятости."
-                    : "✅ График выбран. Теперь выберите тип занятости."
-            );
-            return ctx.wizard.next(); // Возвращаем, чтобы шаг завершился
+            return;
         }
 
-        // Построение клавиатуры для первого входа на шаг
+        // Если нет callback (первый вход на шаг), показываем кнопки
         try {
-            const response = await axios.get("https://api.hh.ru/schedules");
-            const schedules = response.data.map((s: any) => ({
-                id: s.id,
-                name: s.name
+            const response = await axios.get("https://api.hh.ru/schedules", {
+                headers: {
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+                }
+            });
+            const schedules = response.data;
+
+            console.log("Получены графики работы от HH API:", schedules);
+
+            // Преобразуем графики в правильный формат
+            const scheduleOptions = schedules.map((schedule: any) => ({
+                id: schedule.id,
+                name: schedule.name || `График: ${schedule.id}`
             }));
 
             const keyboard = buildKeyboardButtons(
-                schedules,
+                scheduleOptions,
                 "select_schedule_",
                 2,
                 [{text: "❌ Не важно", data: "ANY"}]
@@ -193,102 +215,115 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
-        if (!ctx.callbackQuery) {
-            try {
-                const empRes = await axios.get("https://api.hh.ru/employments");
-                const employments = empRes.data || [];
+        // Обрабатываем callback от выбора типа занятости
+        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
+            const cb = ctx.callbackQuery;
 
-                const employmentOptions = employments.map((e: any) => ({
-                    ...e,
-                    name: e.name || `Тип: ${e.id}`
-                }));
+            if (cb.data.startsWith("select_employment_")) {
+                const employmentId = cb.data.replace("select_employment_", "");
+                const session = ctx.session as JobSearchSession;
+                session.employmentType = employmentId === "ANY" ? undefined : employmentId;
 
-                const keyboard = buildKeyboardButtons(
-                    employmentOptions,
-                    "select_employment_",
-                    2,
-                    [{text: "❌ Не важно", data: "ANY"}]
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    employmentId === "ANY"
+                        ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
+                        : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
                 );
-
-                await ctx.reply("Выберите тип занятости:", keyboard);
-            } catch (err) {
-                console.error("Ошибка получения типов занятости:", err);
-                await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
-                return ctx.scene.leave();
+                return ctx.wizard.next();
             }
+
+            // Если callback не от типа занятости, просто отвечаем и остаемся на этом шаге
+            await ctx.answerCbQuery();
             return;
         }
 
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_employment_")) {
-            await ctx.reply("Пожалуйста, выберите тип занятости нажатием на кнопку.");
-            return;
+        // Если нет callback (первый вход на шаг), показываем кнопки
+        try {
+            const empRes = await axios.get("https://api.hh.ru/employments", {
+                headers: {
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+                }
+            });
+            const employments = empRes.data || [];
+
+            const employmentOptions = employments.map((e: any) => ({
+                ...e,
+                name: e.name || `Тип: ${e.id}`
+            }));
+
+            const keyboard = buildKeyboardButtons(
+                employmentOptions,
+                "select_employment_",
+                2,
+                [{text: "❌ Не важно", data: "ANY"}]
+            );
+
+            await ctx.reply("Выберите тип занятости:", keyboard);
+        } catch (err) {
+            console.error("Ошибка получения типов занятости:", err);
+            await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
+            return ctx.scene.leave();
         }
-
-        const employmentId = cb.data.replace("select_employment_", "");
-        const session = ctx.session as JobSearchSession;
-        session.employmentType = employmentId === "ANY" ? undefined : employmentId;
-
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            employmentId === "ANY"
-                ? "✅ Тип занятости: не важно. Теперь выберите профессиональную область."
-                : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
-        );
-        return ctx.wizard.next();
     },
 
     // Шаг 7 — выбор профессиональной области
     async (ctx) => {
-        if (!ctx.callbackQuery) {
-            try {
-                const profRes = await axios.get("https://api.hh.ru/professional_areas");
-                const profAreas = profRes.data || [];
+        // Обрабатываем callback от выбора проф. области
+        if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
+            const cb = ctx.callbackQuery;
 
-                const areaOptions = profAreas.flatMap((group: any) =>
-                    (group.categories || []).map((cat: any) => ({
-                        id: cat.id,
-                        name: cat.name,
-                        title: cat.name
-                    }))
+            if (cb.data.startsWith("select_profarea_")) {
+                const profAreaId = cb.data.replace("select_profarea_", "");
+                const session = ctx.session as JobSearchSession;
+                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
+
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    profAreaId === "ANY"
+                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
                 );
-
-                const keyboard = buildKeyboardButtons(
-                    areaOptions,
-                    "select_profarea_",
-                    1,
-                    [{text: "❌ Не важно", data: "ANY"}]
-                );
-
-                await ctx.reply("Выберите профессиональную область:", keyboard);
-            } catch (err) {
-                console.error("Ошибка получения профобластей:", err);
-                await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
-                return ctx.scene.leave();
+                return ctx.wizard.next();
             }
+
+            // Если callback не от проф. области, просто отвечаем и остаемся на этом шаге
+            await ctx.answerCbQuery();
             return;
         }
 
-        const cb = ctx.callbackQuery;
-        if (!hasCallbackData(cb) || !cb.data.startsWith("select_profarea_")) {
-            await ctx.reply("Пожалуйста, выберите профессиональную область нажатием на кнопку.");
-            return;
+        // Если нет callback (первый вход на шаг), показываем кнопки
+        try {
+            const profRes = await axios.get("https://api.hh.ru/professional_areas", {
+                headers: {
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
+                }
+            });
+            const profAreas = profRes.data || [];
+
+            const areaOptions = profAreas.flatMap((group: any) =>
+                (group.categories || []).map((cat: any) => ({
+                    id: cat.id,
+                    name: cat.name,
+                    title: cat.name
+                }))
+            );
+
+            const keyboard = buildKeyboardButtons(
+                areaOptions,
+                "select_profarea_",
+                1,
+                [{text: "❌ Не важно", data: "ANY"}]
+            );
+
+            await ctx.reply("Выберите профессиональную область:", keyboard);
+        } catch (err) {
+            console.error("Ошибка получения профобластей:", err);
+            await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
+            return ctx.scene.leave();
         }
-
-        const profAreaId = cb.data.replace("select_profarea_", "");
-        const session = ctx.session as JobSearchSession;
-        session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
-
-        await ctx.answerCbQuery();
-        await ctx.reply(
-            profAreaId === "ANY"
-                ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
-                : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
-        );
-        return ctx.wizard.next();
     },
 
     // Шаг 8 — ключевые слова
@@ -357,6 +392,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 }
             }
         } catch (e) {
+            console.error("Ошибка поиска:", e);
             await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
         }
 
