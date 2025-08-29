@@ -213,7 +213,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-    // Шаг 6 — выбор типа занятости (ИСПРАВЛЕННЫЙ)
+// Шаг 6 — выбор типа занятости (ИСПРАВЛЕННЫЙ)
     async (ctx) => {
         // Обрабатываем callback от выбора типа занятости
         if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
@@ -261,6 +261,11 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 2,
                 [{text: "❌ Не важно", data: "ANY"}]
             );
+
+            // Удаляем предыдущее сообщение с кнопками графика, если нужно
+            if (ctx.callbackQuery) {
+                await ctx.deleteMessage(ctx.callbackQuery.message?.message_id);
+            }
 
             await ctx.reply("Выберите тип занятости:", keyboard);
         } catch (err) {
