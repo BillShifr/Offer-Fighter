@@ -10,16 +10,28 @@ export function buildKeyboardButtons(
     columns = 2,
     additionalButtons: { text: string; data: string }[] = []
 ) {
+    // Создаем основные кнопки
     const buttons = items.map(item => {
-        const text = typeof item.name === "string" ? item.name : String(item.id);
-        const data = typeof item.id === "string" || typeof item.id === "number" ? item.id : text;
-        return Markup.button.callback(text, `${cbPrefix}${data}`);
+        // Определяем текст для кнопки
+        let buttonText = item.name || item.title || `ID: ${item.id}`;
+
+        // Ограничиваем длину текста для Telegram
+        if (buttonText.length > 30) {
+            buttonText = buttonText.substring(0, 27) + '...';
+        }
+
+        return Markup.button.callback(
+            buttonText,
+            `${cbPrefix}${item.id}`
+        );
     });
 
+    // Добавляем дополнительные кнопки
     additionalButtons.forEach(btn => {
         buttons.push(Markup.button.callback(btn.text, `${cbPrefix}${btn.data}`));
     });
 
+    // Группируем кнопки по колонкам
     const rows = [];
     for (let i = 0; i < buttons.length; i += columns) {
         rows.push(buttons.slice(i, i + columns));

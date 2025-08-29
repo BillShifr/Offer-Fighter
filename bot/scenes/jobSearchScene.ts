@@ -3,11 +3,42 @@ import axios from "axios";
 import {HHRegion, JobSearchContext, JobSearchSession} from "../types";
 import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils.ts";
 import {formatSalary} from "../utils/salaryUtils.ts";
-import {searchVacancies} from "../utils/apiUtils.ts";
+import {getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     "job-search-wizard",
 
+// Шаг 1 — получить резюме
+    async (ctx) => {
+        const telegramId = ctx.from?.id;
+        if (!telegramId) {
+            await ctx.reply("Не удалось определить ваш Telegram ID.");
+            return ctx.scene.leave();
+        }
+
+        try {
+            const resumes = await getUserResumes(telegramId);
+
+            if (!Array.isArray(resumes) || !resumes.length) {
+                await ctx.reply("Резюме не найдено. Пожалуйста, авторизуйтесь через /start.");
+                return ctx.scene.leave();
+            }
+
+            // Преобразуем резюме для отображения
+            const resumeOptions = resumes.map(resume => ({
+                id: resume.id,
+                name: resume.title || `Резюме ${resume.id.substring(0, 8)}...`
+            }));
+
+            const keyboard = buildKeyboardButtons(resumeOptions, "select_resume_");
+            await ctx.reply("Выберите резюме:", keyboard);
+            return ctx.wizard.next();
+        } catch (err) {
+            console.error("Ошибка получения резюме:", err);
+            await ctx.reply("Ошибка при получении резюме. Попробуйте позже.");
+            return ctx.scene.leave();
+        }
+    },
 
     // Шаг 2 — выбор резюме
     async (ctx) => {
