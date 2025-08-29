@@ -357,7 +357,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 }
             }
         } catch (e) {
-            console.error("Ошибка поиска:", e);
             await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
         }
 
