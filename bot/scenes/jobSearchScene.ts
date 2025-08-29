@@ -132,8 +132,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-
-// Шаг 4 — выбор подрегиона
+    // Шаг 4 — выбор подрегиона
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb) || !cb.data.startsWith("select_subregion_")) {
@@ -153,30 +152,32 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply("Область выбрана. Теперь выберите график работы.");
         }
 
-        // Ручной список графиков работы
+        // Используем захардкоженный список графиков работы
         const scheduleOptions = [
-            { id: "full_day", name: "Полный день" },
-            { id: "shift", name: "Сменный график" },
-            { id: "flexible", name: "Гибкий график" },
-            { id: "remote", name: "Удаленная работа" },
-            { id: "rotation", name: "Вахтовый метод" }
+            {id: "fullDay", name: "Полный день"},
+            {id: "shift", name: "Сменный график"},
+            {id: "flexible", name: "Гибкий график"},
+            {id: "remote", name: "Удаленная работа"},
+            {id: "flyInFlyOut", name: "Вахтовый метод"}
         ];
 
         const keyboard = buildKeyboardButtons(
             scheduleOptions,
             "select_schedule_",
             2,
-            [{ text: "❌ Не важно", data: "ANY" }]
+            [{text: "❌ Не важно", data: "ANY"}]
         );
 
         await ctx.reply("Выберите желаемый график работы:", keyboard);
-
-        return ctx.wizard.next(); // переходим к обработке выбора графика
+        return ctx.wizard.next();
     },
 
-// Шаг 5 — обработка выбранного графика работы
+    // Шаг 5 — обработка выбранного графика работы
     async (ctx) => {
-        if (!ctx.callbackQuery || !hasCallbackData(ctx.callbackQuery)) return;
+        if (!ctx.callbackQuery || !hasCallbackData(ctx.callbackQuery)) {
+            await ctx.reply("Пожалуйста, выберите график работы нажатием на кнопку.");
+            return;
+        }
 
         const cb = ctx.callbackQuery;
 
@@ -189,7 +190,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply(
                 scheduleId === "ANY"
                     ? "✅ График работы: не важно. Теперь выберите тип занятости."
-                    : `✅ График работы выбран: ${scheduleId}. Теперь выберите тип занятости.`
+                    : "✅ График выбран. Теперь выберите тип занятости."
             );
 
             return ctx.wizard.next();
@@ -198,7 +199,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return;
         }
     },
-
 
     // Шаг 6 — выбор типа занятости
     async (ctx) => {
@@ -359,11 +359,15 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
                 for (const v of vacancies.slice(0, 10)) {
                     try {
+                        // Добавляем информацию о графике работы в вывод
+                        const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
+
                         await ctx.replyWithMarkdown(
                             `*${v.name}*\n` +
                             `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
-                            `💰 Зарплата: ${formatSalary(v.salary)}\n` +
-                            `📍 Регион: ${v.area?.name || "Не указан"}\n` +
+                            `💰 Зарплата: ${formatSalary(v.salary)}` +
+                            scheduleInfo +
+                            `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
                             `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
                             Markup.inlineKeyboard([
                                 Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
