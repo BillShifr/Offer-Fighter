@@ -269,42 +269,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     },
 
 
-// Шаг 7 — показ кнопок выбора типа занятости (по аналогии с шагом 4)
-    async (ctx) => {
-        try {
-            // Получаем все справочники из HH API
-            const response = await axios.get("https://api.hh.ru/dictionaries", {
-                headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
-                }
-            });
-
-            const dictionaries = response.data;
-
-            // Используем типы занятости из словаря (employment)
-            const employmentOptions = dictionaries.employment.map((employment: any) => ({
-                id: employment.id,
-                name: employment.name
-            }));
-
-            const keyboard = buildKeyboardButtons(
-                employmentOptions,
-                "select_employment_",
-                2,
-                [{text: "❌ Не важно", data: "ANY"}]
-            );
-
-            await ctx.reply("Выберите тип занятости:", keyboard);
-        } catch (err) {
-            console.error("Ошибка получения типов занятости:", err);
-            await ctx.reply("Ошибка при получении типов занятости. Попробуйте позже.");
-            return ctx.scene.leave();
-        }
-
-        return ctx.wizard.next();
-    },
-
-    // Шаг 7 — выбор профессиональной области
+// Шаг 7 — выбор профессиональной области
     async (ctx) => {
         // Обрабатываем callback от выбора проф. области
         if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
@@ -336,7 +301,9 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
                 }
             });
-            const profRoles = profRes.data || [];
+
+            // Правильно берем массив items
+            const profRoles = profRes.data.items || [];
 
             const areaOptions = profRoles.map((role: any) => ({
                 id: role.id,
@@ -357,6 +324,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.scene.leave();
         }
     },
+
 
     // Шаг 8 — ключевые слова
     async (ctx) => {
