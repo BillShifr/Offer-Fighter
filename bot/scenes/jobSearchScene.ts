@@ -151,12 +151,12 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
 // Шаг 5 — выбор графика работы
     async (ctx) => {
-        const session = ctx.session as JobSearchSession;
         const cb = ctx.callbackQuery;
 
-        // Пользователь выбрал график
-        if (cb && hasCallbackData(cb) && cb.data.startsWith("select_schedule_")) {
+        // Обрабатываем только корректные callback от графика
+        if (hasCallbackData(cb) && cb.data.startsWith("select_schedule_")) {
             const scheduleId = cb.data.replace("select_schedule_", "");
+            const session = ctx.session as JobSearchSession;
             session.workSchedule = scheduleId === "ANY" ? undefined : scheduleId;
 
             await ctx.answerCbQuery();
@@ -168,22 +168,28 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.wizard.next();
         }
 
-        // Если мы сюда попали — значит это первый заход на шаг → показываем клавиатуру
+        // Если callback не от графика (например, остаток от предыдущего шага) — очищаем и показываем кнопки
+        if (cb) {
+            await ctx.answerCbQuery(); // Важно: отвечаем на любой старый callback
+        }
+
         try {
             const response = await axios.get("https://api.hh.ru/schedules");
-            const schedules = response.data.map((s: any) => ({
-                id: s.id,
-                name: s.name
-            }));
+            const schedules = response.data;
+
+            console.log("Получены графики работы:", schedules); // Для отладки
 
             const keyboard = buildKeyboardButtons(
                 schedules,
                 "select_schedule_",
                 2,
-                [{ text: "❌ Не важно", data: "select_schedule_ANY" }]
+                [{ text: "❌ Не важно", data: "ANY" }]
             );
 
-            await ctx.reply("Выберите желаемый график работы:", keyboard);
+            await ctx.reply(
+                "Выберите желаемый график работы:",
+                keyboard
+            );
         } catch (err) {
             console.error("Ошибка получения графиков работы:", err);
             await ctx.reply("Ошибка при получении графиков работы. Попробуйте позже.");
