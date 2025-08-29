@@ -302,13 +302,20 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 }
             });
 
-            // Правильно берем массив items
-            const profRoles = profRes.data.items || [];
+            const categories = Array.isArray(profRes.data.categories) ? profRes.data.categories : [];
 
-            const areaOptions = profRoles.map((role: any) => ({
+            // Собираем все роли из всех категорий
+            const profRoles = categories.flatMap(cat => Array.isArray(cat.roles) ? cat.roles : []);
+
+            const areaOptions = profRoles.map(role => ({
                 id: role.id,
                 name: role.name
             }));
+
+            if (areaOptions.length === 0) {
+                await ctx.reply("Профессиональные области не найдены.");
+                return ctx.scene.leave();
+            }
 
             const keyboard = buildKeyboardButtons(
                 areaOptions,
@@ -324,7 +331,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.scene.leave();
         }
     },
-
 
     // Шаг 8 — ключевые слова
     async (ctx) => {
