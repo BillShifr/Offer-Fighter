@@ -156,7 +156,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             // Получаем все справочники из HH API
             const response = await axios.get("https://api.hh.ru/dictionaries", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
 
@@ -213,7 +213,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
     },
 
-    // Шаг 6 — выбор типа занятости
+    // Шаг 6 — выбор типа занятости (ИСПРАВЛЕННЫЙ)
     async (ctx) => {
         // Обрабатываем callback от выбора типа занятости
         if (ctx.callbackQuery && hasCallbackData(ctx.callbackQuery)) {
@@ -238,11 +238,12 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return;
         }
 
-        // Получаем типы занятости из словарей HH API
+        // Если нет callback (первый вход на шаг), показываем кнопки
         try {
+            // Получаем все справочники из HH API
             const response = await axios.get("https://api.hh.ru/dictionaries", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
 
@@ -298,7 +299,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         try {
             const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                 headers: {
-                    'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'
+                    'HH-User-Agent': 'HH-Bot/1.0 (your-email@example.com)'
                 }
             });
             const profRoles = profRes.data || [];
