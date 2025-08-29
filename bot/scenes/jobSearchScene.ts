@@ -233,12 +233,12 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 return ctx.wizard.next();
             }
 
-            // Если callback не от типа занятости, просто отвечаем и остаемся на этом шаге
+            // Если callback не от типа занятости, просто отвечаем
             await ctx.answerCbQuery();
             return;
         }
 
-        // Если нет callback (первый вход на шаг), показываем кнопки
+        // Если это переход с предыдущего шага (без callbackQuery), показываем кнопки
         try {
             // Получаем все справочники из HH API
             const response = await axios.get("https://api.hh.ru/dictionaries", {
@@ -261,11 +261,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 2,
                 [{text: "❌ Не важно", data: "ANY"}]
             );
-
-            // Удаляем предыдущее сообщение с кнопками графика, если нужно
-            if (ctx.callbackQuery) {
-                await ctx.deleteMessage(ctx.callbackQuery.message?.message_id);
-            }
 
             await ctx.reply("Выберите тип занятости:", keyboard);
         } catch (err) {
