@@ -51,6 +51,11 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model<any>("User", userSchema);
 
+app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    next(); // Не забудьте вызвать next()!
+});
+
 // === OAuth hh.ru: redirect to HH auth page ===
 app.get("/auth/hh", (req: Request, res: Response) => {
     const telegramId = req.query.telegramId;
