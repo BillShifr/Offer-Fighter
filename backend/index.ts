@@ -3,20 +3,18 @@ import mongoose, {Document} from "mongoose";
 import * as dotenv from "dotenv";
 import cors from "cors";
 import axios from "axios";
-import {NextFunction} from "connect";
 
 dotenv.config();
 
-
 const app = express();
-// Настройка CORS
+
+// Middleware
 app.use(cors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// Проверка обработки JSON
 app.use(express.json({limit: "10mb"}));
 app.use(express.urlencoded({extended: true}));
 
@@ -120,8 +118,10 @@ app.get("/auth/callback", async (req: Request, res: Response) => {
     }
 });
 
-// === Get user data ===
-app.get("/user/:telegramId", async (req: Request, res: Response) => {
+// === API Routes ===
+
+// Get user data
+app.get("/api/user/:telegramId", async (req: Request, res: Response) => {
     try {
         const user = await User.findOne({telegramId: req.params.telegramId});
         if (!user) return res.status(404).json({error: "Пользователь не найден"});
@@ -131,8 +131,8 @@ app.get("/user/:telegramId", async (req: Request, res: Response) => {
     }
 });
 
-// === Get resumes from HH for user ===
-app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
+// Get resumes from HH for user
+app.get("/api/user/:telegramId/resumes", async (req: Request, res: Response) => {
     try {
         const user = await User.findOne({telegramId: req.params.telegramId});
         if (!user || !user.hhAccessToken) return res.status(404).json({error: "Нет токена HH или пользователь"});
@@ -141,7 +141,6 @@ app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
             headers: {Authorization: `Bearer ${user.hhAccessToken}`},
         });
 
-        // HH API возвращает объект с items
         const resumes = hhRes.data.items || [];
         res.json(resumes);
     } catch (e) {
@@ -150,8 +149,8 @@ app.get("/user/:telegramId/resumes", async (req: Request, res: Response) => {
     }
 });
 
-// === Select resume for user ===
-app.post("/user/:telegramId/selectResume", async (req: Request, res: Response) => {
+// Select resume for user
+app.post("/api/user/:telegramId/selectResume", async (req: Request, res: Response) => {
     try {
         const {resumeId} = req.body;
         if (!resumeId) return res.status(400).json({error: "resumeId обязателен"});
@@ -167,8 +166,8 @@ app.post("/user/:telegramId/selectResume", async (req: Request, res: Response) =
     }
 });
 
-// === Update filters ===
-app.post("/user/:telegramId/filters", async (req: Request, res: Response) => {
+// Update filters
+app.post("/api/user/:telegramId/filters", async (req: Request, res: Response) => {
     try {
         const filters = req.body;
         const user = await User.findOneAndUpdate(
@@ -182,8 +181,8 @@ app.post("/user/:telegramId/filters", async (req: Request, res: Response) => {
     }
 });
 
-// === Check subscription ===
-app.get("/user/:telegramId/subscription", async (req: Request, res: Response) => {
+// Check subscription
+app.get("/api/user/:telegramId/subscription", async (req: Request, res: Response) => {
     try {
         const user = await User.findOne({telegramId: req.params.telegramId});
         if (!user) return res.status(404).json({error: "Пользователь не найден"});
@@ -193,22 +192,21 @@ app.get("/user/:telegramId/subscription", async (req: Request, res: Response) =>
     }
 });
 
-// === Simple /search endpoint (placeholder) ===
-app.post("/search", async (req: Request, res: Response) => {
+// Simple /search endpoint (placeholder)
+app.post("/api/search", async (req: Request, res: Response) => {
     try {
-        res.json([]); // TODO: реализовать поиск вакансий
+        res.json([]);
     } catch (e) {
         res.status(500).json({error: (e as Error).message});
     }
 });
 
-
-// === Apply to vacancy ===
-app.post("/vacancies/apply", async (req: Request, res: Response) => {
+// Apply to vacancy
+app.post("/api/vacancies/apply", async (req: Request, res: Response) => {
     console.log("📨 Received apply request:", req.body);
 
     try {
-        const { telegramId, vacancyId, resumeId, coverLetter } = req.body;
+        const {telegramId, vacancyId, resumeId, coverLetter} = req.body;
 
         // Валидация обязательных полей
         if (!telegramId || !vacancyId || !resumeId) {
@@ -219,21 +217,21 @@ app.post("/vacancies/apply", async (req: Request, res: Response) => {
             });
         }
 
-        const user = await User.findOne({ telegramId });
+        const user = await User.findOne({telegramId});
         if (!user) {
             console.error("❌ User not found:", telegramId);
-            return res.status(404).json({ error: "Пользователь не найден" });
+            return res.status(404).json({error: "Пользователь не найден"});
         }
 
         if (!user.hhAccessToken) {
             console.error("❌ No HH token for user:", telegramId);
-            return res.status(401).json({ error: "Нет токена авторизации HH" });
+            return res.status(401).json({error: "Нет токена авторизации HH"});
         }
 
         // Проверка актуальности токена
         if (user.hhExpiresAt && user.hhExpiresAt < new Date()) {
             console.error("❌ Token expired for user:", telegramId);
-            return res.status(401).json({ error: "Токен авторизации устарел" });
+            return res.status(401).json({error: "Токен авторизации устарел"});
         }
 
         // Формируем запрос к HH API
@@ -244,7 +242,7 @@ app.post("/vacancies/apply", async (req: Request, res: Response) => {
             message: coverLetter || ""
         };
 
-        console.log("🌐 Sending to HH API:", { hhUrl, payload });
+        console.log("🌐 Sending to HH API:", {hhUrl, payload});
 
         const response = await axios.post(hhUrl, payload, {
             headers: {
@@ -256,7 +254,7 @@ app.post("/vacancies/apply", async (req: Request, res: Response) => {
         });
 
         console.log("✅ HH API response:", response.data);
-        res.json({ success: true, vacancyId, negotiationId: response.data.id });
+        res.json({success: true, vacancyId, negotiationId: response.data.id});
 
     } catch (err: any) {
         console.error("❌ Application error:", {
@@ -272,7 +270,6 @@ app.post("/vacancies/apply", async (req: Request, res: Response) => {
         });
     }
 });
-
 
 // === Server ===
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;

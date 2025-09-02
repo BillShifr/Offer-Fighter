@@ -11,7 +11,7 @@ function getBackendUrl(): string {
 // Получение резюме пользователя
 export async function getUserResumes(telegramId: number) {
     try {
-        const res = await axios.get(`${getBackendUrl()}/user/${telegramId}/resumes`);
+        const res = await axios.get(`${getBackendUrl()}/api/user/${telegramId}/resumes`);
         return res.data.items || res.data || [];
     } catch (err) {
         console.error("Ошибка получения резюме:", err);
@@ -43,7 +43,7 @@ export async function getHHRegions(): Promise<any> {
 }
 
 interface ApplyPayload {
-    telegramId: number; // <-- добавляем
+    telegramId: number;
     vacancyId: string;
     resumeId: string;
     coverLetter?: string;
@@ -51,8 +51,8 @@ interface ApplyPayload {
 
 export async function applyToVacancy({ telegramId, vacancyId, resumeId, coverLetter }: ApplyPayload) {
     try {
-        const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
-            telegramId,   // <-- обязательно
+        const res = await axios.post(`${getBackendUrl()}/api/vacancies/apply`, {
+            telegramId,
             vacancyId,
             resumeId,
             coverLetter
