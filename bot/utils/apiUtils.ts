@@ -43,20 +43,22 @@ export async function getHHRegions(): Promise<any> {
 }
 
 interface ApplyPayload {
+    telegramId: number; // <-- добавляем
     vacancyId: string;
     resumeId: string;
     coverLetter?: string;
 }
 
-export async function applyToVacancy({ vacancyId, resumeId, coverLetter }: ApplyPayload) {
+export async function applyToVacancy({ telegramId, vacancyId, resumeId, coverLetter }: ApplyPayload) {
     try {
         const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
+            telegramId,   // <-- обязательно
             vacancyId,
             resumeId,
             coverLetter
         });
         return res.data;
-    } catch (err) {
+    } catch (err: any) {
         console.error(`Ошибка отклика на вакансию ${vacancyId}:`, err.response?.data || err.message);
         throw new Error(`Не удалось откликнуться на вакансию ${vacancyId}`);
     }

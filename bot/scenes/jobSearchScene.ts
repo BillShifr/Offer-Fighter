@@ -460,6 +460,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         for (const v of session.lastVacancies) {
             try {
                 await applyToVacancy({
+                    telegramId: ctx.from.id,
                     vacancyId: v.id,
                     resumeId: session.selectedResumeId,
                     coverLetter: session.coverLetter
