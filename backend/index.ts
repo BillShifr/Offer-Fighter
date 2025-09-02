@@ -192,6 +192,44 @@ app.post("/search", async (req: Request, res: Response) => {
     }
 });
 
+// === Apply to vacancy ===
+app.post("/vacancies/apply", async (req: Request, res: Response) => {
+    try {
+        const { telegramId, vacancyId, resumeId, coverLetter } = req.body;
+        if (!telegramId || !vacancyId || !resumeId) {
+            return res.status(400).json({ error: "telegramId, vacancyId и resumeId обязательны" });
+        }
+
+        const user = await User.findOne({ telegramId });
+        if (!user || !user.hhAccessToken) {
+            return res.status(404).json({ error: "Пользователь не найден или нет токена HH" });
+        }
+
+        // HH API endpoint для отклика на вакансию
+        const hhUrl = `https://api.hh.ru/vacancies/${vacancyId}/responses`;
+
+        // Пример тела запроса для HH
+        const payload: any = {
+            resume: resumeId,
+        };
+        if (coverLetter) payload.cover_letter = coverLetter;
+
+        await axios.post(hhUrl, payload, {
+            headers: {
+                Authorization: `Bearer ${user.hhAccessToken}`,
+                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
+                "Content-Type": "application/json",
+            },
+        });
+
+        res.json({ success: true, vacancyId });
+    } catch (err: any) {
+        console.error("Ошибка отклика на вакансию:", err.response?.data || err.message);
+        res.status(500).json({ error: `Не удалось откликнуться на вакансию ${req.body.vacancyId}` });
+    }
+});
+
+
 // === Server ===
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 app.listen(PORT, () => {
