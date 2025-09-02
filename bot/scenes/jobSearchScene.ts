@@ -223,7 +223,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             return ctx.wizard.next();
         },
 
-// Шаг 6 — выбор типа занятости и показ кнопок профобласти
+        // Шаг 6 — выбор типа занятости и показ кнопок профобласти
         async (ctx) => {
             const cb = ctx.callbackQuery;
 
@@ -243,7 +243,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     : "✅ Тип занятости выбран. Теперь выберите профессиональную область."
             );
 
-            // сразу загружаем список профобластей
             try {
                 const profRes = await axios.get("https://api.hh.ru/professional_roles", {
                     headers: {'HH-User-Agent': 'HH-Bot/1.0 (vladislavtatyankin01@gmail.com)'}
@@ -263,45 +262,103 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     return ctx.scene.leave();
                 }
 
-                const areaOptions = allRoles.slice(0, 10).map(role => ({
+                // сохраняем список в сессию и стартовую страницу
+                session.profAreas = allRoles;
+                session.profPage = 0;
+
+                // показываем первую страницу
+                const pageSize = 10;
+                const startIndex = session.profPage * pageSize;
+                const pageItems = allRoles.slice(startIndex, startIndex + pageSize).map(role => ({
                     id: role.id,
                     name: role.name.length > 20 ? role.name.substring(0, 20) + "..." : role.name
                 }));
 
-                const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 2, [
-                    {text: "❌ Не важно", data: "ANY"}
-                ]);
+                // IT (id=1) — отдельной большой кнопкой
+                const buttons = [
+                    [{text: "💻 Информационные технологии", callback_data: "select_profarea_1"}],
+                    ...buildKeyboardButtons(pageItems, "select_profarea_", 2).inline_keyboard,
+                    [
+                        {text: "❌ Не важно", callback_data: "select_profarea_ANY"}
+                    ],
+                    [
+                        {text: "⏮ Назад", callback_data: "prof_prev"},
+                        {text: "⏭ Далее", callback_data: "prof_next"}
+                    ]
+                ];
 
-                await ctx.reply("Выберите профессиональную область:", keyboard);
+                await ctx.reply("Выберите профессиональную область:", {
+                    reply_markup: {inline_keyboard: buttons}
+                });
             } catch (err) {
                 console.error("Ошибка получения профессиональных областей:", err);
                 await ctx.reply("Ошибка при получении профессиональных областей. Попробуйте позже.");
                 return ctx.scene.leave();
             }
 
-            return ctx.wizard.next(); // переходим на шаг 7 (обработка клика)
+            return ctx.wizard.next(); // переходим на шаг 7 (обработка кликов)
         },
 
-// Шаг 7 — обработка выбора профессиональной области
+// Шаг 7 — обработка выбора профессиональной области и пагинации
         async (ctx) => {
+            const session = ctx.session as JobSearchSession;
             const cb = ctx.callbackQuery;
-            if (!cb || !hasCallbackData(cb) || !cb.data.startsWith("select_profarea_")) {
+
+            if (!cb || !hasCallbackData(cb)) {
                 await ctx.reply("Пожалуйста, выберите профессиональную область нажатием на кнопку.");
                 return;
             }
 
-            const profAreaId = cb.data.replace("select_profarea_", "");
-            const session = ctx.session as JobSearchSession;
-            session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
+            const data = cb.data;
 
-            await ctx.answerCbQuery();
-            await ctx.reply(
-                profAreaId === "ANY"
-                    ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
-                    : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
-            );
+            // пагинация
+            if (data === "prof_next" || data === "prof_prev") {
+                const pageSize = 10;
+                const totalPages = Math.ceil(session.profAreas.length / pageSize);
 
-            return ctx.wizard.next();
+                if (data === "prof_next") {
+                    session.profPage = Math.min(session.profPage + 1, totalPages - 1);
+                } else {
+                    session.profPage = Math.max(session.profPage - 1, 0);
+                }
+
+                const startIndex = session.profPage * pageSize;
+                const pageItems = session.profAreas.slice(startIndex, startIndex + pageSize).map(role => ({
+                    id: role.id,
+                    name: role.name.length > 20 ? role.name.substring(0, 20) + "..." : role.name
+                }));
+
+                const buttons = [
+                    [{text: "💻 Информационные технологии", callback_data: "select_profarea_1"}],
+                    ...buildKeyboardButtons(pageItems, "select_profarea_", 2).inline_keyboard,
+                    [
+                        {text: "❌ Не важно", callback_data: "select_profarea_ANY"}
+                    ],
+                    [
+                        {text: "⏮ Назад", callback_data: "prof_prev"},
+                        {text: "⏭ Далее", callback_data: "prof_next"}
+                    ]
+                ];
+
+                await ctx.editMessageReplyMarkup({inline_keyboard: buttons});
+                await ctx.answerCbQuery();
+                return;
+            }
+
+            // выбор области
+            if (data.startsWith("select_profarea_")) {
+                const profAreaId = data.replace("select_profarea_", "");
+                session.professionalArea = profAreaId === "ANY" ? undefined : profAreaId;
+
+                await ctx.answerCbQuery();
+                await ctx.reply(
+                    profAreaId === "ANY"
+                        ? "✅ Профессиональная область: не важно. Теперь введите ключевые слова для поиска (через пробел):"
+                        : "✅ Профессиональная область выбрана. Теперь введите ключевые слова для поиска (через пробел):"
+                );
+
+                return ctx.wizard.next();
+            }
         },
 
 
