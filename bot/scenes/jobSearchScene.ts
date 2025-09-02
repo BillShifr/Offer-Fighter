@@ -351,7 +351,20 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
         try {
             const telegramId = ctx.from?.id;
-            const payload = {
+
+            // Преобразуем параметры в формат HH API
+            const hhApiPayload = {
+                text: session.keywords || "",
+                area: parseInt(session.region) || 113, // Россия по умолчанию
+                schedule: session.workSchedule || undefined,
+                employment: session.employmentType || undefined,
+                professional_role: session.professionalArea ? parseInt(session.professionalArea) : undefined,
+                per_page: 20,
+                page: 0
+            };
+
+            // Payload для вашего бэкенда (сохраняем оригинальные параметры)
+            const backendPayload = {
                 telegramId,
                 resumeId: session.selectedResumeId,
                 region: session.region,
@@ -360,20 +373,31 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 professionalArea: session.professionalArea,
                 keywords: session.keywords,
                 coverLetter: session.coverLetter,
+                // Добавляем преобразованные параметры для HH API
+                hhApiPayload
             };
 
-            // ⬇⬇⬇ добавляем вывод payload в чат
             await ctx.reply(
                 "📦 Payload, который отправляем на бэкенд:\n" +
-                "```json\n" + JSON.stringify(payload, null, 2) + "\n```",
+                "```json\n" + JSON.stringify(backendPayload, null, 2) + "\n```",
                 {parse_mode: "Markdown"}
             );
 
             await ctx.reply("🔍 Ищем подходящие вакансии...");
-            const vacancies = await searchVacancies(payload);
+
+            // Отправляем преобразованный payload
+            const vacancies = await searchVacancies(hhApiPayload);
 
             if (!vacancies.length) {
                 await ctx.reply("😔 К сожалению, по вашим критериям вакансий не найдено.");
+
+                // Предложим альтернативные варианты поиска
+                await ctx.reply(
+                    "💡 Попробуйте изменить параметры поиска:\n" +
+                    "• Используйте более общие ключевые слова\n" +
+                    "• Расширьте регион поиска\n" +
+                    "• Измените тип занятости или график работы"
+                );
             } else {
                 await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
 
