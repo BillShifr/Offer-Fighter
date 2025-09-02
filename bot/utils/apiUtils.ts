@@ -53,7 +53,7 @@ export async function applyToVacancy({telegramId, vacancyId, resumeId, coverLett
     try {
         console.log("📤 Sending apply request:", {telegramId, vacancyId, resumeId});
 
-        const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
+        const res = await axios.post(`${getBackendUrl()}/api/vacancies/apply`, {
             telegramId,
             vacancyId,
             resumeId,
