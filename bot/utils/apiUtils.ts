@@ -22,7 +22,7 @@ export async function getUserResumes(telegramId: number) {
 // Поиск вакансий
 export async function searchVacancies(payload: any): Promise<any[]> {
     try {
-        const res = await axios.post(`${getBackendUrl()}/search`, payload);
+        const res = await axios.get(`${getBackendUrl()}/search`, payload);
         return res.data || [];
     } catch (e) {
         console.error("Ошибка поиска:", e);
