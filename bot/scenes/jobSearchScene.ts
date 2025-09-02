@@ -289,7 +289,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             ];
 
             const keyboard = buildKeyboardButtons(areaOptions, "select_profarea_", 2, [
-                {text: "❌ Не важно", data: "ANY"}
+                {text: "❌ Не важнфывсфывсо", data: "ANY"}
             ]);
 
             await ctx.reply("Выберите профессиональную область:", keyboard);
