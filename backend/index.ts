@@ -1,14 +1,23 @@
 import express, {Request, Response} from "express";
-import mongoose, {Document, Model} from "mongoose";
+import mongoose, {Document} from "mongoose";
 import * as dotenv from "dotenv";
 import cors from "cors";
 import axios from "axios";
 
 dotenv.config();
 
+
 const app = express();
-app.use(cors());
-app.use(express.json());
+// Настройка CORS
+app.use(cors({
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// Проверка обработки JSON
+app.use(express.json({limit: "10mb"}));
+app.use(express.urlencoded({extended: true}));
 
 // === Types ===
 interface IUser extends Document {
@@ -192,40 +201,74 @@ app.post("/search", async (req: Request, res: Response) => {
     }
 });
 
+
 // === Apply to vacancy ===
 app.post("/vacancies/apply", async (req: Request, res: Response) => {
+    console.log("📨 Received apply request:", req.body);
+
     try {
         const { telegramId, vacancyId, resumeId, coverLetter } = req.body;
+
+        // Валидация обязательных полей
         if (!telegramId || !vacancyId || !resumeId) {
-            return res.status(400).json({ error: "telegramId, vacancyId и resumeId обязательны" });
+            console.error("❌ Missing required fields");
+            return res.status(400).json({
+                error: "telegramId, vacancyId и resumeId обязательны",
+                received: req.body
+            });
         }
 
         const user = await User.findOne({ telegramId });
-        if (!user || !user.hhAccessToken) {
-            return res.status(404).json({ error: "Пользователь не найден или нет токена HH" });
+        if (!user) {
+            console.error("❌ User not found:", telegramId);
+            return res.status(404).json({ error: "Пользователь не найден" });
         }
 
-        // HH API endpoint для отклика на вакансию
-        const hhUrl = `https://api.hh.ru/vacancies/${vacancyId}/responses`;
+        if (!user.hhAccessToken) {
+            console.error("❌ No HH token for user:", telegramId);
+            return res.status(401).json({ error: "Нет токена авторизации HH" });
+        }
 
-        // Пример тела запроса для HH
-        const payload: any = {
-            resume: resumeId,
+        // Проверка актуальности токена
+        if (user.hhExpiresAt && user.hhExpiresAt < new Date()) {
+            console.error("❌ Token expired for user:", telegramId);
+            return res.status(401).json({ error: "Токен авторизации устарел" });
+        }
+
+        // Формируем запрос к HH API
+        const hhUrl = `https://api.hh.ru/negotiations`;
+        const payload = {
+            resume_id: resumeId,
+            vacancy_id: vacancyId,
+            message: coverLetter || ""
         };
-        if (coverLetter) payload.cover_letter = coverLetter;
 
-        await axios.post(hhUrl, payload, {
+        console.log("🌐 Sending to HH API:", { hhUrl, payload });
+
+        const response = await axios.post(hhUrl, payload, {
             headers: {
                 Authorization: `Bearer ${user.hhAccessToken}`,
                 "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
                 "Content-Type": "application/json",
             },
+            timeout: 10000
         });
 
-        res.json({ success: true, vacancyId });
+        console.log("✅ HH API response:", response.data);
+        res.json({ success: true, vacancyId, negotiationId: response.data.id });
+
     } catch (err: any) {
-        console.error("Ошибка отклика на вакансию:", err.response?.data || err.message);
-        res.status(500).json({ error: `Не удалось откликнуться на вакансию ${req.body.vacancyId}` });
+        console.error("❌ Application error:", {
+            message: err.message,
+            response: err.response?.data,
+            status: err.response?.status,
+            headers: err.response?.headers
+        });
+
+        res.status(500).json({
+            error: `Не удалось откликнуться на вакансию`,
+            details: err.response?.data || err.message
+        });
     }
 });
 

@@ -51,15 +51,29 @@ interface ApplyPayload {
 
 export async function applyToVacancy({ telegramId, vacancyId, resumeId, coverLetter }: ApplyPayload) {
     try {
+        console.log("📤 Sending apply request:", { telegramId, vacancyId, resumeId });
+
         const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
-            telegramId,   // <-- обязательно
+            telegramId,
             vacancyId,
             resumeId,
-            coverLetter
+            coverLetter: coverLetter || ""
+        }, {
+            timeout: 15000,
+            headers: {
+                "Content-Type": "application/json"
+            }
         });
+
+        console.log("✅ Apply response:", res.data);
         return res.data;
     } catch (err: any) {
-        console.error(`Ошибка отклика на вакансию ${vacancyId}:`, err.response?.data || err.message);
-        throw new Error(`Не удалось откликнуться на вакансию ${vacancyId}`);
+        console.error("❌ Apply error:", {
+            message: err.message,
+            response: err.response?.data,
+            status: err.response?.status
+        });
+
+        throw new Error(err.response?.data?.error || `Не удалось откликнуться на вакансию ${vacancyId}`);
     }
 }

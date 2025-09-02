@@ -361,7 +361,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-// Шаг 10 — обработка выбора показывать вакансии
+    // Шаг 10 — обработка выбора показывать вакансии
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb)) {
@@ -378,21 +378,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
 
         try {
-            // Подгружаем резюме пользователя и автоматически выбираем первое
-            if (!session.selectedResumeId) {
-                const resumes = await getUserResumes(ctx.from.id);
-                if (!resumes.length) {
-                    await ctx.reply("😞 У вас нет доступных резюме для отклика. Сначала создайте резюме на hh.ru.");
-                    return ctx.scene.leave();
-                }
-                session.selectedResumeId = resumes[0].id;
-
-                // Сохраняем выбор резюме на бэке
-                await axios.post(`${getBackendUrl()}/user/${ctx.from.id}/selectResume`, {
-                    resumeId: session.selectedResumeId
-                });
-            }
-
             // Подготовка payload для HH API
             const hhApiPayload = {
                 text: session.keywords || "",
@@ -471,6 +456,8 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
 
         await ctx.reply("🚀 Начинаю отклик на все вакансии...");
+        let successCount = 0;
+        let failCount = 0;
 
         for (const v of session.lastVacancies) {
             try {
@@ -480,15 +467,32 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                     resumeId: session.selectedResumeId,
                     coverLetter: session.coverLetter
                 });
+                successCount++;
                 await ctx.reply(`✅ Отклик отправлен на: ${v.name}`);
-            } catch (err) {
+            } catch (err: any) {
+                failCount++;
                 console.error("Ошибка отклика:", err);
-                await ctx.reply(`❌ Не удалось откликнуться на: ${v.name}`);
+
+                // Более информативное сообщение об ошибке
+                let errorMessage = `❌ Не удалось откликнуться на: ${v.name}`;
+                if (err.message.includes("archived")) {
+                    errorMessage += "\nВакансия архивирована";
+                } else if (err.message.includes("token")) {
+                    errorMessage += "\nПроблема с авторизацией";
+                }
+
+                await ctx.reply(errorMessage);
             }
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Увеличена задержка
         }
 
-        await ctx.reply("Все отклики завершены.");
+        await ctx.reply(
+            `📊 Результаты откликов:\n` +
+            `✅ Успешно: ${successCount}\n` +
+            `❌ Не удалось: ${failCount}\n\n` +
+            `Все отклики завершены.`
+        );
+
         return ctx.scene.leave();
     }
 );
