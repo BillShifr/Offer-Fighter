@@ -51,29 +51,26 @@ interface ApplyPayload {
 
 export async function applyToVacancy({ telegramId, vacancyId, resumeId, coverLetter }: ApplyPayload) {
     try {
-        console.log("📤 Sending apply request:", { telegramId, vacancyId, resumeId });
+        // Получаем токен пользователя
+        const { data: user } = await axios.get(`${getBackendUrl()}/user/${telegramId}`);
+        if (!user.hhAccessToken) throw new Error("Нет токена HH");
 
-        const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
-            telegramId,
-            vacancyId,
-            resumeId,
-            coverLetter: coverLetter || ""
-        }, {
-            timeout: 15000,
+        const payload: any = { resume: resumeId };
+        if (coverLetter) payload.cover_letter = coverLetter;
+
+        // Отправка отклика напрямую на HH API
+        const res = await axios.post(`https://api.hh.ru/vacancies/${vacancyId}/responses`, payload, {
             headers: {
+                Authorization: `Bearer ${user.hhAccessToken}`,
+                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
                 "Content-Type": "application/json"
             }
         });
 
-        console.log("✅ Apply response:", res.data);
         return res.data;
     } catch (err: any) {
-        console.error("❌ Apply error:", {
-            message: err.message,
-            response: err.response?.data,
-            status: err.response?.status
-        });
-
-        throw new Error(err.response?.data?.error || `Не удалось откликнуться на вакансию ${vacancyId}`);
+        console.error("Ошибка отклика на вакансию:", err.response?.data || err.message);
+        throw new Error(`Не удалось откликнуться на вакансию ${vacancyId}`);
     }
 }
+
