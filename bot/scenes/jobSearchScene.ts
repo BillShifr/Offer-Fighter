@@ -338,7 +338,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 9 — сопроводительное письмо и поиск
+// Шаг 9 — сопроводительное письмо и поиск
     async (ctx) => {
         if (!ctx.message || !("text" in ctx.message)) {
             await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
@@ -362,6 +362,13 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 coverLetter: session.coverLetter,
             };
 
+            // ⬇⬇⬇ добавляем вывод payload в чат
+            await ctx.reply(
+                "📦 Payload, который отправляем на бэкенд:\n" +
+                "```json\n" + JSON.stringify(payload, null, 2) + "\n```",
+                {parse_mode: "Markdown"}
+            );
+
             await ctx.reply("🔍 Ищем подходящие вакансии...");
             const vacancies = await searchVacancies(payload);
 
@@ -372,7 +379,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
                 for (const v of vacancies.slice(0, 10)) {
                     try {
-                        // Добавляем информацию о графике работы и типе занятости в вывод
                         const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
                         const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
 
