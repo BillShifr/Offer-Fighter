@@ -1,5 +1,5 @@
 import axios from "axios";
-import {HHRegion} from "../types";
+import { HHRegion } from "../types";
 
 // функция для безопасного получения BACKEND_URL
 function getBackendUrl(): string {
@@ -49,45 +49,17 @@ interface ApplyPayload {
     coverLetter?: string;
 }
 
-export async function applyToVacancy({telegramId, vacancyId, coverLetter}: {
-    telegramId: number,
-    vacancyId: string,
-    coverLetter?: string
-}) {
+export async function applyToVacancy({ telegramId, vacancyId, resumeId, coverLetter }: ApplyPayload) {
     try {
-        // Получаем токен пользователя
-        const {data: user} = await axios.get(`${getBackendUrl()}/user/${telegramId}`);
-        if (!user.hhAccessToken) throw new Error("Нет токена HH");
-
-        // Получаем список резюме с HH
-        const resumesRes = await axios.get('https://api.hh.ru/resumes', {
-            headers: {Authorization: `Bearer ${user.hhAccessToken}`}
+        const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
+            telegramId,   // <-- обязательно
+            vacancyId,
+            resumeId,
+            coverLetter
         });
-
-        if (!resumesRes.data.items || resumesRes.data.items.length === 0) {
-            throw new Error("У пользователя нет резюме на HH");
-        }
-
-        const resumeId = resumesRes.data.items[0].id; // <-- первый доступный резюме
-
-        const payload: any = {resume: resumeId};
-        if (coverLetter) payload.cover_letter = coverLetter;
-
-        // Отправка отклика
-        const res = await axios.post(`https://api.hh.ru/vacancies/${vacancyId}/responses`, payload, {
-            headers: {
-                Authorization: `Bearer ${user.hhAccessToken}`,
-                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
-                "Content-Type": "application/json"
-            }
-        });
-
         return res.data;
-
     } catch (err: any) {
-        console.error("Ошибка отклика на вакансию:", err.response?.data || err.message);
+        console.error(`Ошибка отклика на вакансию ${vacancyId}:`, err.response?.data || err.message);
         throw new Error(`Не удалось откликнуться на вакансию ${vacancyId}`);
     }
 }
-
-
