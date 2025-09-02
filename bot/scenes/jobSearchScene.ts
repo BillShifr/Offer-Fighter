@@ -399,7 +399,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
             await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
 
             // Отправка вакансий
-            for (const v of vacancies.slice(0, 10)) {
+            for (const v of vacancies.slice(0, 1)) {
                 const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
                 const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
 
