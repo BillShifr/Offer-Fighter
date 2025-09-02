@@ -55,7 +55,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     next();
 });
 
-// OAuth routes
+// OAuth routes (без /api префикса)
 app.get("/auth/hh", (req: Request, res: Response) => {
     const telegramId = req.query.telegramId;
     if (!telegramId) return res.status(400).send("telegramId required");
@@ -122,7 +122,84 @@ app.get("/auth/callback", async (req: Request, res: Response) => {
     }
 });
 
-// API routes - добавлен префикс /api для избежания конфликтов
+// ==================== API ROUTES ====================
+
+// OPTIONS для CORS
+app.options("/api/vacancies/apply", (req: Request, res: Response) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.status(200).send();
+});
+
+// Apply to vacancy - ДОЛЖЕН БЫТЬ ПЕРВЫМ!
+app.post("/api/vacancies/apply", async (req: Request, res: Response) => {
+    console.log("📨 Received apply request:", req.body);
+
+    try {
+        const { telegramId, vacancyId, resumeId, coverLetter } = req.body;
+
+        if (!telegramId || !vacancyId || !resumeId) {
+            console.error("❌ Missing required fields");
+            return res.status(400).json({
+                error: "telegramId, vacancyId и resumeId обязательны",
+                received: req.body
+            });
+        }
+
+        const user = await User.findOne({ telegramId });
+        if (!user) {
+            console.error("❌ User not found:", telegramId);
+            return res.status(404).json({ error: "Пользователь не найден" });
+        }
+
+        if (!user.hhAccessToken) {
+            console.error("❌ No HH token for user:", telegramId);
+            return res.status(401).json({ error: "Нет токена авторизации HH" });
+        }
+
+        if (user.hhExpiresAt && user.hhExpiresAt < new Date()) {
+            console.error("❌ Token expired for user:", telegramId);
+            return res.status(401).json({ error: "Токен авторизации устарел" });
+        }
+
+        const hhUrl = `https://api.hh.ru/negotiations`;
+        const payload = {
+            resume_id: resumeId,
+            vacancy_id: vacancyId,
+            message: coverLetter || ""
+        };
+
+        console.log("🌐 Sending to HH API:", { hhUrl, payload });
+
+        const response = await axios.post(hhUrl, payload, {
+            headers: {
+                Authorization: `Bearer ${user.hhAccessToken}`,
+                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
+                "Content-Type": "application/json",
+            },
+            timeout: 10000
+        });
+
+        console.log("✅ HH API response:", response.data);
+        res.json({ success: true, vacancyId, negotiationId: response.data.id });
+
+    } catch (err: any) {
+        console.error("❌ Application error:", {
+            message: err.message,
+            response: err.response?.data,
+            status: err.response?.status,
+            headers: err.response?.headers
+        });
+
+        res.status(500).json({
+            error: `Не удалось откликнуться на вакансию`,
+            details: err.response?.data || err.message
+        });
+    }
+});
+
+// Остальные API роуты
 app.get("/api/user/:telegramId", async (req: Request, res: Response) => {
     try {
         const user = await User.findOne({telegramId: req.params.telegramId});
@@ -195,80 +272,6 @@ app.post("/api/search", async (req: Request, res: Response) => {
         res.json([]);
     } catch (e) {
         res.status(500).json({error: (e as Error).message});
-    }
-});
-
-// Важно: этот маршрут должен быть ДО параметризованных маршрутов
-app.options("/api/vacancies/apply", (req: Request, res: Response) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.status(200).send();
-});
-
-app.post("/api/vacancies/apply", async (req: Request, res: Response) => {
-    console.log("📨 Received apply request:", req.body);
-
-    try {
-        const {telegramId, vacancyId, resumeId, coverLetter} = req.body;
-
-        if (!telegramId || !vacancyId || !resumeId) {
-            console.error("❌ Missing required fields");
-            return res.status(400).json({
-                error: "telegramId, vacancyId и resumeId обязательны",
-                received: req.body
-            });
-        }
-
-        const user = await User.findOne({telegramId});
-        if (!user) {
-            console.error("❌ User not found:", telegramId);
-            return res.status(404).json({error: "Пользователь не найден"});
-        }
-
-        if (!user.hhAccessToken) {
-            console.error("❌ No HH token for user:", telegramId);
-            return res.status(401).json({error: "Нет токена авторизации HH"});
-        }
-
-        if (user.hhExpiresAt && user.hhExpiresAt < new Date()) {
-            console.error("❌ Token expired for user:", telegramId);
-            return res.status(401).json({error: "Токен авторизации устарел"});
-        }
-
-        const hhUrl = `https://api.hh.ru/negotiations`;
-        const payload = {
-            resume_id: resumeId,
-            vacancy_id: vacancyId,
-            message: coverLetter || ""
-        };
-
-        console.log("🌐 Sending to HH API:", {hhUrl, payload});
-
-        const response = await axios.post(hhUrl, payload, {
-            headers: {
-                Authorization: `Bearer ${user.hhAccessToken}`,
-                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
-                "Content-Type": "application/json",
-            },
-            timeout: 10000
-        });
-
-        console.log("✅ HH API response:", response.data);
-        res.json({success: true, vacancyId, negotiationId: response.data.id});
-
-    } catch (err: any) {
-        console.error("❌ Application error:", {
-            message: err.message,
-            response: err.response?.data,
-            status: err.response?.status,
-            headers: err.response?.headers
-        });
-
-        res.status(500).json({
-            error: `Не удалось откликнуться на вакансию`,
-            details: err.response?.data || err.message
-        });
     }
 });
 
