@@ -361,7 +361,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 10 — обработка выбора показывать вакансии
+// Шаг 10 — обработка выбора показывать вакансии
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb)) {
@@ -378,6 +378,21 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         }
 
         try {
+            // Подгружаем резюме пользователя и автоматически выбираем первое
+            if (!session.selectedResumeId) {
+                const resumes = await getUserResumes(ctx.from.id);
+                if (!resumes.length) {
+                    await ctx.reply("😞 У вас нет доступных резюме для отклика. Сначала создайте резюме на hh.ru.");
+                    return ctx.scene.leave();
+                }
+                session.selectedResumeId = resumes[0].id;
+
+                // Сохраняем выбор резюме на бэке
+                await axios.post(`${getBackendUrl()}/user/${ctx.from.id}/selectResume`, {
+                    resumeId: session.selectedResumeId
+                });
+            }
+
             // Подготовка payload для HH API
             const hhApiPayload = {
                 text: session.keywords || "",
@@ -439,7 +454,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-    // Шаг 11 — массовый отклик
+// Шаг 11 — массовый отклик
     async (ctx) => {
         const cb = ctx.callbackQuery;
         if (!hasCallbackData(cb) || cb.data !== "apply_all") {
