@@ -207,6 +207,12 @@ app.post("/search", async (req: Request, res: Response) => {
     }
 });
 
+app.options("/vacancies/apply", (req: Request, res: Response) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.status(200).send();
+});
 
 // === Apply to vacancy ===
 app.post("/vacancies/apply", async (req: Request, res: Response) => {
