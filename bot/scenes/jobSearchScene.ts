@@ -450,9 +450,29 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         await ctx.answerCbQuery();
         const session = ctx.session as JobSearchSession;
 
-        if (!session.lastVacancies || !session.selectedResumeId) {
-            await ctx.reply("Нет вакансий для отклика или не выбрано резюме.");
+        // Проверяем вакансии
+        if (!session.lastVacancies || !session.lastVacancies.length) {
+            await ctx.reply("Нет вакансий для отклика.");
             return ctx.scene.leave();
+        }
+
+        // Проверяем resumeId и при необходимости подгружаем
+        let resumeId = session.selectedResumeId;
+        if (!resumeId) {
+            try {
+                const resumes = await getUserResumes(ctx.from.id);
+                if (!resumes || !resumes.length) {
+                    await ctx.reply("Резюме не найдено. Сначала выберите резюме через /start.");
+                    return ctx.scene.leave();
+                }
+                resumeId = resumes[0].id; // берем первый доступный
+                session.selectedResumeId = resumeId;
+                console.log("Используем fallback resumeId:", resumeId);
+            } catch (err) {
+                console.error("Ошибка получения резюме для отклика:", err);
+                await ctx.reply("Не удалось получить резюме. Попробуйте позже.");
+                return ctx.scene.leave();
+            }
         }
 
         await ctx.reply("🚀 Начинаю отклик на все вакансии...");
@@ -464,7 +484,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 await applyToVacancy({
                     telegramId: ctx.from.id,
                     vacancyId: v.id,
-                    resumeId: session.selectedResumeId,
+                    resumeId,
                     coverLetter: session.coverLetter
                 });
                 successCount++;
@@ -473,7 +493,6 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 failCount++;
                 console.error("Ошибка отклика:", err);
 
-                // Более информативное сообщение об ошибке
                 let errorMessage = `❌ Не удалось откликнуться на: ${v.name}`;
                 if (err.message.includes("archived")) {
                     errorMessage += "\nВакансия архивирована";
@@ -483,7 +502,8 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
 
                 await ctx.reply(errorMessage);
             }
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Увеличена задержка
+
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         await ctx.reply(
