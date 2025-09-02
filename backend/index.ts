@@ -235,19 +235,16 @@ app.post("/api/vacancies/apply", async (req: Request, res: Response) => {
         }
 
         // Формируем запрос к HH API
-        const hhUrl = `https://api.hh.ru/negotiations`;
+        const hhUrl = `https://api.hh.ru/negotiations?vacancy_id=${vacancyId}`;
         const payload = {
             resume_id: resumeId,
-            vacancy_id: vacancyId,
             message: coverLetter || ""
         };
-
-        console.log("🌐 Sending to HH API:", {hhUrl, payload});
 
         const response = await axios.post(hhUrl, payload, {
             headers: {
                 Authorization: `Bearer ${user.hhAccessToken}`,
-                "User-Agent": "HH-Bot/1.0 (vladislavtatyankin01@gmail.com)",
+                "User-Agent": "Offer-Fighter-Bot/1.0",
                 "Content-Type": "application/json",
             },
             timeout: 10000
