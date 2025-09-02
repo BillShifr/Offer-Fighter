@@ -3,6 +3,7 @@ import mongoose, {Document} from "mongoose";
 import * as dotenv from "dotenv";
 import cors from "cors";
 import axios from "axios";
+import {NextFunction} from "connect";
 
 dotenv.config();
 
