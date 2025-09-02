@@ -41,3 +41,23 @@ export async function getHHRegions(): Promise<any> {
         throw new Error("Failed to fetch regions");
     }
 }
+
+interface ApplyPayload {
+    vacancyId: string;
+    resumeId: string;
+    coverLetter?: string;
+}
+
+export async function applyToVacancy({ vacancyId, resumeId, coverLetter }: ApplyPayload) {
+    try {
+        const res = await axios.post(`${getBackendUrl()}/vacancies/apply`, {
+            vacancyId,
+            resumeId,
+            coverLetter
+        });
+        return res.data;
+    } catch (err) {
+        console.error(`Ошибка отклика на вакансию ${vacancyId}:`, err.response?.data || err.message);
+        throw new Error(`Не удалось откликнуться на вакансию ${vacancyId}`);
+    }
+}

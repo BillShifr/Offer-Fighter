@@ -3,7 +3,7 @@ import axios from "axios";
 import {HHRegion, JobSearchContext, JobSearchSession} from "../types";
 import {buildKeyboardButtons, getHHRegions, hasCallbackData} from "../utils/keyboardUtils.ts";
 import {formatSalary} from "../utils/salaryUtils.ts";
-import {getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
+import {applyToVacancy, getUserResumes, searchVacancies} from "../utils/apiUtils.ts";
 
 export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
     "job-search-wizard",
@@ -338,7 +338,7 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         return ctx.wizard.next();
     },
 
-// Шаг 9 — сопроводительное письмо и поиск
+// Шаг 9 — сопроводительное письмо
     async (ctx) => {
         if (!ctx.message || !("text" in ctx.message)) {
             await ctx.reply("Пожалуйста, введите сопроводительное письмо или отправьте '-'.");
@@ -349,13 +349,39 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
         const coverLetter = ctx.message.text.trim();
         session.coverLetter = coverLetter === '-' ? undefined : coverLetter;
 
-        try {
-            const telegramId = ctx.from?.id;
+        // Спрашиваем: показывать вакансии?
+        await ctx.reply(
+            "Хотите сразу посмотреть найденные вакансии?",
+            Markup.inlineKeyboard([
+                Markup.button.callback("Да ✅", "show_vacancies"),
+                Markup.button.callback("Нет ❌", "skip_vacancies")
+            ])
+        );
 
-            // Преобразуем параметры в формат HH API
+        return ctx.wizard.next();
+    },
+
+    // Шаг 10 — обработка выбора показывать вакансии
+    async (ctx) => {
+        const cb = ctx.callbackQuery;
+        if (!hasCallbackData(cb)) {
+            await ctx.reply("Пожалуйста, выберите опцию нажатием на кнопку.");
+            return;
+        }
+
+        await ctx.answerCbQuery();
+        const session = ctx.session as JobSearchSession;
+
+        if (cb.data === "skip_vacancies") {
+            await ctx.reply("Хорошо, поиск завершён без отображения вакансий.");
+            return ctx.scene.leave();
+        }
+
+        try {
+            // Подготовка payload для HH API
             const hhApiPayload = {
                 text: session.keywords || "",
-                area: parseInt(session.region) || 113, // Россия по умолчанию
+                area: parseInt(session.region) || 113,
                 schedule: session.workSchedule || undefined,
                 employment: session.employmentType || undefined,
                 professional_role: session.professionalArea ? parseInt(session.professionalArea) : undefined,
@@ -363,73 +389,90 @@ export const jobSearchWizard = new Scenes.WizardScene<JobSearchContext>(
                 page: 0
             };
 
-            // Payload для вашего бэкенда (сохраняем оригинальные параметры)
-            const backendPayload = {
-                telegramId,
-                resumeId: session.selectedResumeId,
-                region: session.region,
-                workSchedule: session.workSchedule,
-                employmentType: session.employmentType,
-                professionalArea: session.professionalArea,
-                keywords: session.keywords,
-                coverLetter: session.coverLetter,
-                // Добавляем преобразованные параметры для HH API
-                hhApiPayload
-            };
-
-            await ctx.reply(
-                "📦 Payload, который отправляем на бэкенд:\n" +
-                "```json\n" + JSON.stringify(backendPayload, null, 2) + "\n```",
-                {parse_mode: "Markdown"}
-            );
-
-            await ctx.reply("🔍 Ищем подходящие вакансии...");
-
-            // Отправляем преобразованный payload
             const vacancies = await searchVacancies(hhApiPayload);
 
             if (!vacancies.length) {
                 await ctx.reply("😔 К сожалению, по вашим критериям вакансий не найдено.");
-
-                // Предложим альтернативные варианты поиска
-                await ctx.reply(
-                    "💡 Попробуйте изменить параметры поиска:\n" +
-                    "• Используйте более общие ключевые слова\n" +
-                    "• Расширьте регион поиска\n" +
-                    "• Измените тип занятости или график работы"
-                );
-            } else {
-                await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
-
-                for (const v of vacancies.slice(0, 10)) {
-                    try {
-                        const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
-                        const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
-
-                        await ctx.replyWithMarkdown(
-                            `*${v.name}*\n` +
-                            `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
-                            `💰 Зарплата: ${formatSalary(v.salary)}` +
-                            scheduleInfo +
-                            employmentInfo +
-                            `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
-                            `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
-                            Markup.inlineKeyboard([
-                                Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
-                            ])
-                        );
-                    } catch (e) {
-                        console.error("Ошибка отправки вакансии:", e);
-                        await ctx.reply("Не удалось отправить информацию о вакансии");
-                    }
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                }
+                return ctx.scene.leave();
             }
+
+            await ctx.reply(`✅ Найдено ${vacancies.length} вакансий. Показываю первые 10:`);
+
+            // Отправка вакансий
+            for (const v of vacancies.slice(0, 10)) {
+                const scheduleInfo = v.schedule ? `\n⏰ График: ${v.schedule.name}` : "";
+                const employmentInfo = v.employment ? `\n👔 Тип занятости: ${v.employment.name}` : "";
+
+                await ctx.replyWithMarkdown(
+                    `*${v.name}*\n` +
+                    `🏢 Компания: ${v.employer?.name || "Не указано"}\n` +
+                    `💰 Зарплата: ${formatSalary(v.salary)}` +
+                    scheduleInfo +
+                    employmentInfo +
+                    `\n📍 Регион: ${v.area?.name || "Не указан"}\n` +
+                    `📅 Опубликовано: ${v.published_at ? new Date(v.published_at).toLocaleDateString() : "Неизвестно"}`,
+                    Markup.inlineKeyboard([
+                        Markup.button.url("🔗 Открыть вакансию", v.alternate_url || v.url || "#")
+                    ])
+                );
+
+                await new Promise(resolve => setTimeout(resolve, 300));
+            }
+
+            // Кнопка откликнуться на все вакансии
+            await ctx.reply(
+                "Хотите откликнуться на все найденные вакансии сразу?",
+                Markup.inlineKeyboard([
+                    Markup.button.callback("Откликнуться 🚀", "apply_all")
+                ])
+            );
+
+            // Сохраняем вакансии в сессии для массового отклика
+            session.lastVacancies = vacancies.slice(0, 10);
+
         } catch (e) {
-            console.error("Ошибка поиска:", e);
+            console.error("Ошибка поиска вакансий:", e);
             await ctx.reply("😞 Произошла ошибка при поиске вакансий. Попробуйте позже.");
+            return ctx.scene.leave();
         }
 
+        return ctx.wizard.next();
+    },
+
+    // Шаг 11 — массовый отклик
+    async (ctx) => {
+        const cb = ctx.callbackQuery;
+        if (!hasCallbackData(cb) || cb.data !== "apply_all") {
+            await ctx.reply("Поиск завершён.");
+            return ctx.scene.leave();
+        }
+
+        await ctx.answerCbQuery();
+        const session = ctx.session as JobSearchSession;
+
+        if (!session.lastVacancies || !session.selectedResumeId) {
+            await ctx.reply("Нет вакансий для отклика или не выбрано резюме.");
+            return ctx.scene.leave();
+        }
+
+        await ctx.reply("🚀 Начинаю отклик на все вакансии...");
+
+        for (const v of session.lastVacancies) {
+            try {
+                await applyToVacancy({
+                    vacancyId: v.id,
+                    resumeId: session.selectedResumeId,
+                    coverLetter: session.coverLetter
+                });
+                await ctx.reply(`✅ Отклик отправлен на: ${v.name}`);
+            } catch (err) {
+                console.error("Ошибка отклика:", err);
+                await ctx.reply(`❌ Не удалось откликнуться на: ${v.name}`);
+            }
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        await ctx.reply("Все отклики завершены.");
         return ctx.scene.leave();
     }
 );
